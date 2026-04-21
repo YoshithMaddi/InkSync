@@ -317,7 +317,7 @@ export default function WhiteboardRoom({
     });
 
     socket.on("room-error", (payload) => {
-      setRoomError(payload?.error || "Room not found. Create a room first.");
+      setRoomError(payload?.error || "Room not found.Nor muskoni room create cheyu ra barre.");
       setPendingText(null);
       setIsDrawing(false);
       currentStrokeRef.current = null;

@@ -94,7 +94,7 @@ app.get("/rooms/:roomId", (request, response) => {
 
   const room = getRoom(roomId);
   if (!room) {
-    response.status(404).json({ error: "Room not found. Create a room first." });
+    response.status(404).json({ error: "Room not found.Nor muskoni room create cheyu ra barre." });
     return;
   }
 
@@ -106,7 +106,7 @@ io.on("connection", (socket) => {
     const room = getRoom(roomId);
     if (!room) {
       socket.emit("room-error", {
-        error: "Room not found. Create a room first."
+        error: "Room not found.Nor muskoni room create cheyu ra barre."
       });
       return;
     }
