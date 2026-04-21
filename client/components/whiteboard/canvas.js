@@ -71,8 +71,6 @@ export function renderScene(ctx, strokes, texts, remoteDrafts, localDraft) {
   const viewWidth = width / dpr;
   const viewHeight = height / dpr;
 
-  drawGrid(ctx, camera, viewWidth, viewHeight);
-
   ctx.save();
   ctx.scale(dpr, dpr);
   ctx.translate(viewWidth / 2, viewHeight / 2);
