@@ -1,0 +1,79 @@
+function ToolIcon({ kind }) {
+  if (kind === "pen") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path
+          d="M4 20l4.5-1 9-9-3.5-3.5-9 9L4 20zM12.8 5.3l3.5 3.5"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
+  }
+
+  if (kind === "eraser") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path
+          d="M8 16l6.8-6.8a2 2 0 012.8 0l1.2 1.2a2 2 0 010 2.8L14 18H9.8L8 16zm-2.6-2.6l6.2-6.2a2 2 0 012.8 0l1.2 1.2"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path d="M14 18h5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      </svg>
+    );
+  }
+
+  if (kind === "text") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path
+          d="M6 6h12M12 6v12M9 18h6"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
+  }
+
+  if (kind === "thickness") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="8" cy="12" r="2" fill="currentColor" />
+        <circle cx="16" cy="12" r="4" fill="currentColor" />
+      </svg>
+    );
+  }
+
+  if (kind === "clear") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path
+          d="M6 7h12M9 7V5h6v2M8 7l1 12h6l1-12"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
+  }
+
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="8" fill="currentColor" />
+    </svg>
+  );
+}
+
+export default ToolIcon;
