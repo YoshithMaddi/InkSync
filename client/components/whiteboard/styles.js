@@ -130,6 +130,7 @@ export const RoomErrorCopy = styled.div`
 
 export const TextEditor = styled.textarea`
   position: absolute;
+  z-index: 30;
   min-width: 180px;
   min-height: 52px;
   padding: 10px 12px;

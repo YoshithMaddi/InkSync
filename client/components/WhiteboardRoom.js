@@ -49,6 +49,7 @@ export default function WhiteboardRoom({
   const currentStrokeRef = useRef(null);
   const cameraRef = useRef(DEFAULT_CAMERA);
   const panStateRef = useRef(null);
+  const blurGuardUntilRef = useRef(0);
   const sceneRef = useRef({
     strokes: initialStrokes,
     texts: initialTexts,
@@ -67,6 +68,7 @@ export default function WhiteboardRoom({
   const [pendingText, setPendingText] = useState(null);
   const [camera, setCamera] = useState(DEFAULT_CAMERA);
   const [cursorPos, setCursorPos] = useState(null);
+  const [viewport, setViewport] = useState({ width: 0, height: 0 });
 
   function updateCamera(nextCamera) {
     cameraRef.current = nextCamera;
@@ -81,6 +83,10 @@ export default function WhiteboardRoom({
 
     const ctx = canvas.getContext("2d");
     const nextSize = syncCanvasSize(canvas);
+    setViewport({
+      width: nextSize.width,
+      height: nextSize.height
+    });
     ctx.__camera = cameraRef.current;
     ctx.__dpr = nextSize.dpr;
     renderScene(
@@ -125,7 +131,13 @@ export default function WhiteboardRoom({
 
   useEffect(() => {
     if (pendingText && textInputRef.current) {
-      textInputRef.current.focus();
+      const focusTimer = window.setTimeout(() => {
+        textInputRef.current?.focus();
+      }, 0);
+
+      return () => {
+        window.clearTimeout(focusTimer);
+      };
     }
   }, [pendingText]);
 
@@ -232,6 +244,7 @@ export default function WhiteboardRoom({
     const point = pointFromEvent(canvas, event, cameraRef.current);
 
     if (activeTool === TOOL_TEXT) {
+      blurGuardUntilRef.current = Date.now() + 250;
       setPendingText({
         id: createItemId("text"),
         x: point.x,
@@ -376,6 +389,13 @@ export default function WhiteboardRoom({
       return;
     }
 
+    if (Date.now() < blurGuardUntilRef.current) {
+      window.setTimeout(() => {
+        textInputRef.current?.focus();
+      }, 0);
+      return;
+    }
+
     const text = pendingText.text.trim();
     if (!text) {
       setPendingText(null);
@@ -445,6 +465,7 @@ export default function WhiteboardRoom({
             camera={camera}
             pendingText={pendingText}
             textInputRef={textInputRef}
+            viewport={viewport}
             onBlur={submitText}
             onChange={(event) =>
               setPendingText((currentValue) => ({

@@ -185,11 +185,13 @@ export function pointFromEvent(canvas, event, camera) {
   };
 }
 
-export function overlayPosition(point, camera) {
+export function overlayPosition(point, camera, viewport) {
+  const width = viewport?.width || 0;
+  const height = viewport?.height || 0;
+
   return {
-    left: `${(point.x - camera.x) * camera.zoom}px`,
-    top: `${(point.y - camera.y) * camera.zoom}px`,
-    transform: "translate(calc(50vw - 6px), calc(50vh - 6px))"
+    left: `${width / 2 + (point.x - camera.x) * camera.zoom}px`,
+    top: `${height / 2 + (point.y - camera.y) * camera.zoom}px`
   };
 }
 
