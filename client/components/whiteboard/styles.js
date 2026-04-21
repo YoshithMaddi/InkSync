@@ -222,9 +222,10 @@ export const RoomChipButton = styled.button`
 
 export const ToolboxCard = styled.section`
   ${cardSurface};
-  width: 92px;
-  padding: 12px;
-  border-radius: 24px;
+  width: 80px;
+  padding: 9px;
+  border-radius: 20px;
+  
 `;
 
 export const ToolboxHeader = styled.div`
@@ -259,7 +260,7 @@ export const ToolboxControls = styled.div`
 export const ToolButton = styled.button`
   ${controlSurface};
   width: 100%;
-  height: 52px;
+  height: 40px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -290,8 +291,8 @@ export const ToolButton = styled.button`
       : null}
 
   svg {
-    width: 22px;
-    height: 22px;
+    width: 18px;
+    height: 18px;
   }
 `;
 
