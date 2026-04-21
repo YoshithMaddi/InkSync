@@ -66,6 +66,7 @@ export default function WhiteboardRoom({
   const [remoteDrafts, setRemoteDrafts] = useState({});
   const [pendingText, setPendingText] = useState(null);
   const [camera, setCamera] = useState(DEFAULT_CAMERA);
+  const [cursorPos, setCursorPos] = useState(null);
 
   function updateCamera(nextCamera) {
     cameraRef.current = nextCamera;
@@ -87,7 +88,10 @@ export default function WhiteboardRoom({
       sceneRef.current.strokes,
       sceneRef.current.texts,
       sceneRef.current.remoteDrafts,
-      currentStrokeRef.current
+      currentStrokeRef.current,
+      activeTool,
+      brushSize,
+      cursorPos
     );
   }
 
@@ -117,7 +121,7 @@ export default function WhiteboardRoom({
       remoteDrafts
     };
     renderCurrentScene();
-  }, [strokes, texts, remoteDrafts, camera]);
+  }, [strokes, texts, remoteDrafts, camera, activeTool, brushSize, cursorPos]);
 
   useEffect(() => {
     if (pendingText && textInputRef.current) {
@@ -265,6 +269,9 @@ export default function WhiteboardRoom({
       return;
     }
 
+    const point = pointFromEvent(canvas, event, cameraRef.current);
+    setCursorPos(point);
+
     if (isPanning && panStateRef.current) {
       const deltaX = (event.clientX - panStateRef.current.pointerX) / cameraRef.current.zoom;
       const deltaY = (event.clientY - panStateRef.current.pointerY) / cameraRef.current.zoom;
@@ -273,14 +280,19 @@ export default function WhiteboardRoom({
         x: panStateRef.current.camera.x - deltaX,
         y: panStateRef.current.camera.y - deltaY
       });
+      renderCurrentScene();
       return;
+    }
+
+    if (activeTool === TOOL_ERASER) {
+      renderCurrentScene();
     }
 
     if (!isDrawing || !currentStrokeRef.current) {
       return;
     }
 
-    currentStrokeRef.current.points.push(pointFromEvent(canvas, event, cameraRef.current));
+    currentStrokeRef.current.points.push(point);
     renderCurrentScene();
     socketRef.current?.emit("stroke-progress", {
       roomId,

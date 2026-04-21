@@ -58,7 +58,7 @@ export function drawTextElement(ctx, textItem) {
   ctx.restore();
 }
 
-export function renderScene(ctx, strokes, texts, remoteDrafts, localDraft) {
+export function renderScene(ctx, strokes, texts, remoteDrafts, localDraft, activeTool, brushSize, cursorPos) {
   const { width, height } = ctx.canvas;
 
   ctx.save();
@@ -93,6 +93,21 @@ export function renderScene(ctx, strokes, texts, remoteDrafts, localDraft) {
     drawStroke(ctx, localDraft);
   }
 
+  if (activeTool === TOOL_ERASER && cursorPos) {
+    drawEraserCursor(ctx, cursorPos, brushSize);
+  }
+
+  ctx.restore();
+}
+
+function drawEraserCursor(ctx, cursorPos, brushSize) {
+  const eraserSize = Math.max(Number(brushSize) * 2, 12);
+  ctx.save();
+  ctx.strokeStyle = "rgba(15, 23, 42, 0.5)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(cursorPos.x, cursorPos.y, eraserSize / 2, 0, Math.PI * 2);
+  ctx.stroke();
   ctx.restore();
 }
 
