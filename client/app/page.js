@@ -8,7 +8,7 @@ export default function HomePage() {
       </section>
 
       <div className="signature-mark" aria-label="Built by Yoshith">
-        -- Yoshith
+        -- Yoshith23
       </div>
     </main>
   );
