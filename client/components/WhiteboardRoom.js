@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
 import { API_URL } from "../lib/api";
@@ -9,6 +8,18 @@ import { CANVAS_HEIGHT, CANVAS_WIDTH, TOOL_ERASER, TOOL_PEN, TOOL_TEXT } from ".
 import RoomChip from "./whiteboard/RoomChip";
 import TextEditorOverlay from "./whiteboard/TextEditorOverlay";
 import ToolboxPanel from "./whiteboard/ToolboxPanel";
+import {
+  BackFab,
+  BackFabText,
+  BoardShell,
+  CanvasStack,
+  CanvasStage,
+  CanvasSurface,
+  RightDock,
+  RoomErrorCopy,
+  RoomErrorTitle,
+  RoomErrorToast
+} from "./whiteboard/styles";
 
 export default function WhiteboardRoom({
   roomId,
@@ -275,8 +286,8 @@ export default function WhiteboardRoom({
   }
 
   return (
-    <main className="board-shell">
-      <Link className="back-fab" href="/" aria-label="Back to lobby" title="Back to lobby">
+    <BoardShell>
+      <BackFab href="/" aria-label="Back to lobby" title="Back to lobby">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path
             d="M15 6l-6 6 6 6M9.5 12H20"
@@ -287,14 +298,13 @@ export default function WhiteboardRoom({
             strokeLinejoin="round"
           />
         </svg>
-        <span className="back-fab-text">Back to lobby</span>
-      </Link>
+        <BackFabText>Back to lobby</BackFabText>
+      </BackFab>
 
-      <section className="canvas-stage">
-        <div className="canvas-stack">
-          <canvas
+      <CanvasStage>
+        <CanvasStack>
+          <CanvasSurface
             ref={canvasRef}
-            className="canvas-surface canvas-surface-full"
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={finishStroke}
@@ -303,10 +313,10 @@ export default function WhiteboardRoom({
           />
 
           {roomError ? (
-            <div className="room-error-toast card">
-              <div className="room-error-title">Room unavailable</div>
-              <div className="room-error-copy">{roomError}</div>
-            </div>
+            <RoomErrorToast>
+              <RoomErrorTitle>Room unavailable</RoomErrorTitle>
+              <RoomErrorCopy>{roomError}</RoomErrorCopy>
+            </RoomErrorToast>
           ) : null}
 
           <TextEditorOverlay
@@ -321,10 +331,10 @@ export default function WhiteboardRoom({
             }
             onKeyDown={handleTextKeyDown}
           />
-        </div>
-      </section>
+        </CanvasStack>
+      </CanvasStage>
 
-      <div className="right-dock">
+      <RightDock>
         <RoomChip participantCount={participantCount} roomId={roomId} onShareCode={handleShareCode} />
 
         <ToolboxPanel
@@ -336,7 +346,7 @@ export default function WhiteboardRoom({
           onClearBoard={handleClearBoard}
           onToolChange={setActiveTool}
         />
-      </div>
-    </main>
+      </RightDock>
+    </BoardShell>
   );
 }

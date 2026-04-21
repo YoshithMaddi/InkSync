@@ -3,6 +3,18 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createRoom, fetchRoom } from "../lib/api";
+import {
+  Eyebrow,
+  Field,
+  FormStack,
+  LobbyCardWrap,
+  PrimaryButton,
+  RoomInput,
+  Row,
+  SecondaryButton,
+  Stack,
+  Status
+} from "./lobbyStyles";
 
 function normalizeRoomCode(value) {
   return value.trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
@@ -49,21 +61,20 @@ export default function LobbyCard() {
   }
 
   return (
-    <section className="card lobby-card">
-      <p className="eyebrow">InkSync by Yoshith</p>
+    <LobbyCardWrap>
+      <Eyebrow>InkSync by Yoshith</Eyebrow>
       <h2>Create or join a room</h2>
-      <div className="stack">
-        <button className="primary-btn full-width" onClick={handleCreateRoom} disabled={isLoading}>
+      <Stack>
+        <PrimaryButton type="button" onClick={handleCreateRoom} disabled={isLoading}>
           {isLoading ? "Creating..." : "Create Room"}
-        </button>
+        </PrimaryButton>
 
-        <form className="stack" onSubmit={handleJoinRoom}>
-          <label className="field" htmlFor="roomCode">
+        <FormStack onSubmit={handleJoinRoom}>
+          <Field htmlFor="roomCode">
             Join with a room code
-            <div className="row">
-              <input
+            <Row>
+              <RoomInput
                 id="roomCode"
-                className="text-input room-input"
                 type="text"
                 value={roomCode}
                 onChange={(event) => setRoomCode(normalizeRoomCode(event.target.value))}
@@ -71,14 +82,14 @@ export default function LobbyCard() {
                 autoComplete="off"
                 maxLength={6}
               />
-              <button className="secondary-btn" type="submit">
+              <SecondaryButton type="submit">
                 {isLoading ? "..." : "Join"}
-              </button>
-            </div>
-          </label>
-        </form>
-      </div>
-      <p className="status">{status}</p>
-    </section>
+              </SecondaryButton>
+            </Row>
+          </Field>
+        </FormStack>
+      </Stack>
+      <Status>{status}</Status>
+    </LobbyCardWrap>
   );
 }

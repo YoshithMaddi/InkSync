@@ -1,15 +1,16 @@
 import LobbyCard from "../components/LobbyCard";
+import { LobbyCenter, LobbyShell, SignatureMark } from "../components/lobbyStyles";
 
 export default function HomePage() {
   return (
-    <main className="lobby-shell">
-      <section className="lobby-center">
+    <LobbyShell>
+      <LobbyCenter>
         <LobbyCard />
-      </section>
+      </LobbyCenter>
 
-      <div className="signature-mark" aria-label="Built by Yoshith">
+      <SignatureMark aria-label="Built by Yoshith">
         -- Yoshith23
-      </div>
-    </main>
+      </SignatureMark>
+    </LobbyShell>
   );
 }

@@ -1,4 +1,5 @@
 import { overlayPosition } from "./canvas";
+import { TextEditor } from "./styles";
 
 function TextEditorOverlay({
   pendingText,
@@ -12,9 +13,8 @@ function TextEditorOverlay({
   }
 
   return (
-    <textarea
+    <TextEditor
       ref={textInputRef}
-      className="text-editor"
       style={overlayPosition(pendingText)}
       value={pendingText.text}
       onChange={onChange}

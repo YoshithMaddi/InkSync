@@ -1,5 +1,18 @@
 import ToolIcon from "./ToolIcon";
 import { TOOL_ERASER, TOOL_PEN, TOOL_TEXT } from "./constants";
+import {
+  ColorButton,
+  ColorInput,
+  ToolButton,
+  ToolButtonGrid,
+  ToolSlider,
+  ToolSliderIcon,
+  ToolboxBadge,
+  ToolboxCard,
+  ToolboxControls,
+  ToolboxHeader,
+  VerticalRange
+} from "./styles";
 
 function ToolboxPanel({
   activeTool,
@@ -11,47 +24,47 @@ function ToolboxPanel({
   onToolChange
 }) {
   return (
-    <section className="card toolbox-panel" aria-label="Whiteboard tools">
-      <div className="toolbox-header">
-        <div className="toolbox-badge">Tools</div>
-      </div>
+    <ToolboxCard aria-label="Whiteboard tools">
+      <ToolboxHeader>
+        <ToolboxBadge>Tools</ToolboxBadge>
+      </ToolboxHeader>
 
-      <div className="tool-button-grid">
-        <button
-          className={`tool-button ${activeTool === TOOL_PEN ? "tool-button-active" : ""}`}
+      <ToolButtonGrid>
+        <ToolButton
+          $active={activeTool === TOOL_PEN}
           type="button"
           onClick={() => onToolChange(TOOL_PEN)}
           aria-label="Pen"
           title="Pen"
         >
           <ToolIcon kind="pen" />
-        </button>
-        <button
-          className={`tool-button ${activeTool === TOOL_ERASER ? "tool-button-active" : ""}`}
+        </ToolButton>
+        <ToolButton
+          $active={activeTool === TOOL_ERASER}
           type="button"
           onClick={() => onToolChange(TOOL_ERASER)}
           aria-label="Eraser"
           title="Eraser"
         >
           <ToolIcon kind="eraser" />
-        </button>
-        <button
-          className={`tool-button ${activeTool === TOOL_TEXT ? "tool-button-active" : ""}`}
+        </ToolButton>
+        <ToolButton
+          $active={activeTool === TOOL_TEXT}
           type="button"
           onClick={() => onToolChange(TOOL_TEXT)}
           aria-label="Text"
           title="Text"
         >
           <ToolIcon kind="text" />
-        </button>
-      </div>
+        </ToolButton>
+      </ToolButtonGrid>
 
-      <div className="toolbox-controls">
-        <label className="tool-slider" htmlFor="brushSize" title="Thickness">
-          <span className="tool-slider-icon" aria-hidden="true">
+      <ToolboxControls>
+        <ToolSlider htmlFor="brushSize" title="Thickness">
+          <ToolSliderIcon aria-hidden="true">
             <ToolIcon kind="thickness" />
-          </span>
-          <input
+          </ToolSliderIcon>
+          <VerticalRange
             id="brushSize"
             type="range"
             min="2"
@@ -60,29 +73,30 @@ function ToolboxPanel({
             onChange={onBrushSizeChange}
             aria-label="Thickness"
           />
-        </label>
+        </ToolSlider>
 
-        <label className="color-button" htmlFor="brushColor" title="Color">
-          <input
+        <ColorButton htmlFor="brushColor" title="Color">
+          <ColorInput
             id="brushColor"
             type="color"
             value={brushColor}
             onChange={onBrushColorChange}
             aria-label="Color"
           />
-        </label>
+        </ColorButton>
 
-        <button
-          className="tool-button tool-button-danger full-width"
+        <ToolButton
+          $danger
+          $fullWidth
           type="button"
           onClick={onClearBoard}
           aria-label="Full erase"
           title="Full erase"
         >
           <ToolIcon kind="clear" />
-        </button>
-      </div>
-    </section>
+        </ToolButton>
+      </ToolboxControls>
+    </ToolboxCard>
   );
 }
 
