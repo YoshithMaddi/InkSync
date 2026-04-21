@@ -50,7 +50,7 @@ export default function LobbyCard() {
 
   return (
     <section className="card lobby-card">
-      <p className="eyebrow">Whiteboard Room</p>
+      <p className="eyebrow">InkSync by Yoshith</p>
       <h2>Create or join a room</h2>
       <div className="stack">
         <button className="primary-btn full-width" onClick={handleCreateRoom} disabled={isLoading}>

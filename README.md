@@ -2,7 +2,7 @@
 
 This project now uses separate frontend and backend folders:
 
-- `client`: Next.js app for creating and joining whiteboard rooms
+- `client`: Next.js app for creating and joining InkSync by Yoshiths
 - `server`: Express and Socket.IO backend for room management and live drawing sync
 
 ## Run locally
