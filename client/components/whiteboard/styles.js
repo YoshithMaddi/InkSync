@@ -90,6 +90,16 @@ export const CanvasSurface = styled.canvas`
   border-radius: 0;
   background: #fffefb;
   touch-action: none;
+  cursor: ${({ $activeTool }) => {
+    if ($activeTool === "hand") return "grab";
+    if ($activeTool === "eraser") return "crosshair";
+    if ($activeTool === "text") return "text";
+    return "crosshair";
+  }};
+
+  &:active {
+    cursor: ${({ $activeTool }) => ($activeTool === "hand" ? "grabbing" : "inherit")};
+  }
 `;
 
 export const RoomErrorToast = styled.div`

@@ -316,6 +316,8 @@ export default function WhiteboardRoom({
     }
 
     const nextStroke = currentStrokeRef.current;
+    // Optimistically add the stroke to local state to prevent blinking
+    setStrokes((prev) => [...prev, nextStroke]);
     socketRef.current.emit("stroke-end", {
       roomId,
       stroke: nextStroke
@@ -423,6 +425,7 @@ export default function WhiteboardRoom({
         <CanvasStack>
           <CanvasSurface
             ref={canvasRef}
+            $activeTool={activeTool}
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={finishStroke}
