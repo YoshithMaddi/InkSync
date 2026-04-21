@@ -14,6 +14,8 @@ const io = new Server(server, {
 
 const PORT = Number(process.env.PORT || 4000);
 const ROOM_LENGTH = 6;
+const ROOM_SYMBOLS = "@#$&%+!";
+const ROOM_CHARSET = `ABCDEFGHJKLMNPQRSTUVWXYZ23456789${ROOM_SYMBOLS}`;
 const rooms = new Map();
 
 app.use(
@@ -24,16 +26,17 @@ app.use(
 app.use(express.json());
 
 function normalizeRoomId(value = "") {
-  return value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, ROOM_LENGTH);
+  const safeSymbols = ROOM_SYMBOLS.replace(/[\\\]\-^]/g, "\\$&");
+  const allowedPattern = new RegExp(`[^A-Z0-9${safeSymbols}]`, "g");
+  return value.toUpperCase().replace(allowedPattern, "").slice(0, ROOM_LENGTH);
 }
 
 function randomRoomId() {
-  const charset = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let result = "";
 
   for (let index = 0; index < ROOM_LENGTH; index += 1) {
-    const randomIndex = Math.floor(Math.random() * charset.length);
-    result += charset[randomIndex];
+    const randomIndex = Math.floor(Math.random() * ROOM_CHARSET.length);
+    result += ROOM_CHARSET[randomIndex];
   }
 
   return result;

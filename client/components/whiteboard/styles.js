@@ -88,11 +88,7 @@ export const CanvasSurface = styled.canvas`
   height: 100vh;
   display: block;
   border-radius: 0;
-  background:
-    linear-gradient(rgba(15, 23, 42, 0.025) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(15, 23, 42, 0.025) 1px, transparent 1px),
-    #fffefb;
-  background-size: 24px 24px;
+  background: #fffefb;
   touch-action: none;
 `;
 
@@ -183,6 +179,11 @@ export const RoomChipCode = styled.div`
 export const RoomChipMeta = styled.div`
   font-size: 0.92rem;
   color: var(--muted);
+`;
+
+export const RoomChipSubMeta = styled.div`
+  font-size: 0.8rem;
+  color: rgba(15, 23, 42, 0.68);
 `;
 
 export const RoomChipButton = styled.button`

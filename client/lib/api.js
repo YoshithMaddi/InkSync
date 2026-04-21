@@ -1,3 +1,5 @@
+import { encodeRoomId } from "./roomId";
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
 async function parseResponse(response) {
@@ -22,7 +24,7 @@ export async function createRoom() {
 }
 
 export async function fetchRoom(roomId) {
-  const response = await fetch(`${API_URL}/rooms/${roomId}`, {
+  const response = await fetch(`${API_URL}/rooms/${encodeRoomId(roomId)}`, {
     cache: "no-store"
   });
 

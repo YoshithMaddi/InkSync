@@ -1,5 +1,5 @@
 import ToolIcon from "./ToolIcon";
-import { TOOL_ERASER, TOOL_PEN, TOOL_TEXT } from "./constants";
+import { TOOL_ERASER, TOOL_HAND, TOOL_PEN, TOOL_TEXT } from "./constants";
 import {
   ColorButton,
   ColorInput,
@@ -56,6 +56,15 @@ function ToolboxPanel({
           title="Text"
         >
           <ToolIcon kind="text" />
+        </ToolButton>
+        <ToolButton
+          $active={activeTool === TOOL_HAND}
+          type="button"
+          onClick={() => onToolChange(TOOL_HAND)}
+          aria-label="Pan"
+          title="Pan"
+        >
+          <ToolIcon kind="hand" />
         </ToolButton>
       </ToolButtonGrid>
 

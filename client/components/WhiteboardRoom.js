@@ -3,8 +3,22 @@
 import { useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
 import { API_URL } from "../lib/api";
-import { createItemId, pointFromEvent, renderScene } from "./whiteboard/canvas";
-import { CANVAS_HEIGHT, CANVAS_WIDTH, TOOL_ERASER, TOOL_PEN, TOOL_TEXT } from "./whiteboard/constants";
+import {
+  createItemId,
+  pointFromEvent,
+  renderScene,
+  syncCanvasSize,
+  zoomCameraAtPoint
+} from "./whiteboard/canvas";
+import {
+  DEFAULT_CAMERA,
+  MAX_ZOOM,
+  MIN_ZOOM,
+  TOOL_ERASER,
+  TOOL_HAND,
+  TOOL_PEN,
+  TOOL_TEXT
+} from "./whiteboard/constants";
 import RoomChip from "./whiteboard/RoomChip";
 import TextEditorOverlay from "./whiteboard/TextEditorOverlay";
 import ToolboxPanel from "./whiteboard/ToolboxPanel";
@@ -32,6 +46,13 @@ export default function WhiteboardRoom({
   const textInputRef = useRef(null);
   const socketRef = useRef(null);
   const currentStrokeRef = useRef(null);
+  const cameraRef = useRef(DEFAULT_CAMERA);
+  const panStateRef = useRef(null);
+  const sceneRef = useRef({
+    strokes: initialStrokes,
+    texts: initialTexts,
+    remoteDrafts: {}
+  });
   const [activeTool, setActiveTool] = useState(TOOL_PEN);
   const [brushColor, setBrushColor] = useState("#0f172a");
   const [brushSize, setBrushSize] = useState(5);
@@ -40,8 +61,34 @@ export default function WhiteboardRoom({
   const [participantCount, setParticipantCount] = useState(initialParticipantCount);
   const [roomError, setRoomError] = useState(initialError);
   const [isDrawing, setIsDrawing] = useState(false);
+  const [isPanning, setIsPanning] = useState(false);
   const [remoteDrafts, setRemoteDrafts] = useState({});
   const [pendingText, setPendingText] = useState(null);
+  const [camera, setCamera] = useState(DEFAULT_CAMERA);
+
+  function updateCamera(nextCamera) {
+    cameraRef.current = nextCamera;
+    setCamera(nextCamera);
+  }
+
+  function renderCurrentScene() {
+    const canvas = canvasRef.current;
+    if (!canvas) {
+      return;
+    }
+
+    const ctx = canvas.getContext("2d");
+    const nextSize = syncCanvasSize(canvas);
+    ctx.__camera = cameraRef.current;
+    ctx.__dpr = nextSize.dpr;
+    renderScene(
+      ctx,
+      sceneRef.current.strokes,
+      sceneRef.current.texts,
+      sceneRef.current.remoteDrafts,
+      currentStrokeRef.current
+    );
+  }
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -49,21 +96,27 @@ export default function WhiteboardRoom({
       return undefined;
     }
 
-    canvas.width = CANVAS_WIDTH;
-    canvas.height = CANVAS_HEIGHT;
-    const ctx = canvas.getContext("2d");
-    renderScene(ctx, strokes, texts, remoteDrafts, currentStrokeRef.current);
+    renderCurrentScene();
+
+    const resizeObserver = new ResizeObserver(() => {
+      renderCurrentScene();
+    });
+
+    resizeObserver.observe(canvas);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
   }, []);
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) {
-      return undefined;
-    }
-
-    const ctx = canvas.getContext("2d");
-    renderScene(ctx, strokes, texts, remoteDrafts, currentStrokeRef.current);
-  }, [strokes, texts, remoteDrafts]);
+    sceneRef.current = {
+      strokes,
+      texts,
+      remoteDrafts
+    };
+    renderCurrentScene();
+  }, [strokes, texts, remoteDrafts, camera]);
 
   useEffect(() => {
     if (pendingText && textInputRef.current) {
@@ -161,7 +214,17 @@ export default function WhiteboardRoom({
       return;
     }
 
-    const point = pointFromEvent(canvas, event);
+    if (activeTool === TOOL_HAND) {
+      panStateRef.current = {
+        camera: cameraRef.current,
+        pointerX: event.clientX,
+        pointerY: event.clientY
+      };
+      setIsPanning(true);
+      return;
+    }
+
+    const point = pointFromEvent(canvas, event, cameraRef.current);
 
     if (activeTool === TOOL_TEXT) {
       setPendingText({
@@ -196,18 +259,28 @@ export default function WhiteboardRoom({
       return;
     }
 
-    if (!isDrawing || !currentStrokeRef.current) {
-      return;
-    }
-
     const canvas = canvasRef.current;
     if (!canvas) {
       return;
     }
 
-    currentStrokeRef.current.points.push(pointFromEvent(canvas, event));
-    const ctx = canvas.getContext("2d");
-    renderScene(ctx, strokes, texts, remoteDrafts, currentStrokeRef.current);
+    if (isPanning && panStateRef.current) {
+      const deltaX = (event.clientX - panStateRef.current.pointerX) / cameraRef.current.zoom;
+      const deltaY = (event.clientY - panStateRef.current.pointerY) / cameraRef.current.zoom;
+      updateCamera({
+        ...panStateRef.current.camera,
+        x: panStateRef.current.camera.x - deltaX,
+        y: panStateRef.current.camera.y - deltaY
+      });
+      return;
+    }
+
+    if (!isDrawing || !currentStrokeRef.current) {
+      return;
+    }
+
+    currentStrokeRef.current.points.push(pointFromEvent(canvas, event, cameraRef.current));
+    renderCurrentScene();
     socketRef.current?.emit("stroke-progress", {
       roomId,
       point: currentStrokeRef.current.points[currentStrokeRef.current.points.length - 1]
@@ -216,6 +289,12 @@ export default function WhiteboardRoom({
 
   function finishStroke() {
     if (roomError) {
+      return;
+    }
+
+    if (isPanning) {
+      panStateRef.current = null;
+      setIsPanning(false);
       return;
     }
 
@@ -231,6 +310,32 @@ export default function WhiteboardRoom({
 
     currentStrokeRef.current = null;
     setIsDrawing(false);
+  }
+
+  function handleWheel(event) {
+    const canvas = canvasRef.current;
+    if (!canvas) {
+      return;
+    }
+
+    event.preventDefault();
+    const bounds = canvas.getBoundingClientRect();
+    const screenPoint = {
+      x: event.clientX - bounds.left - bounds.width / 2,
+      y: event.clientY - bounds.top - bounds.height / 2
+    };
+    const zoomDelta = event.deltaY < 0 ? 1.1 : 0.9;
+    const nextZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, cameraRef.current.zoom * zoomDelta));
+
+    if (nextZoom === cameraRef.current.zoom) {
+      return;
+    }
+
+    updateCamera(zoomCameraAtPoint(cameraRef.current, nextZoom, screenPoint));
+  }
+
+  function resetView() {
+    updateCamera(DEFAULT_CAMERA);
   }
 
   async function handleShareCode() {
@@ -310,6 +415,7 @@ export default function WhiteboardRoom({
             onPointerUp={finishStroke}
             onPointerLeave={finishStroke}
             onPointerCancel={finishStroke}
+            onWheel={handleWheel}
           />
 
           {roomError ? (
@@ -320,6 +426,7 @@ export default function WhiteboardRoom({
           ) : null}
 
           <TextEditorOverlay
+            camera={camera}
             pendingText={pendingText}
             textInputRef={textInputRef}
             onBlur={submitText}
@@ -335,7 +442,13 @@ export default function WhiteboardRoom({
       </CanvasStage>
 
       <RightDock>
-        <RoomChip participantCount={participantCount} roomId={roomId} onShareCode={handleShareCode} />
+        <RoomChip
+          participantCount={participantCount}
+          roomId={roomId}
+          zoomLabel={`${Math.round(camera.zoom * 100)}% zoom`}
+          onResetView={resetView}
+          onShareCode={handleShareCode}
+        />
 
         <ToolboxPanel
           activeTool={activeTool}

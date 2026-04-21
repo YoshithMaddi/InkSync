@@ -3,10 +3,11 @@ import {
   RoomChipCard,
   RoomChipCode,
   RoomChipLabel,
-  RoomChipMeta
+  RoomChipMeta,
+  RoomChipSubMeta
 } from "./styles";
 
-function RoomChip({ participantCount, roomId, onShareCode }) {
+function RoomChip({ participantCount, roomId, zoomLabel, onResetView, onShareCode }) {
   return (
     <RoomChipCard>
       <RoomChipLabel>Room ID</RoomChipLabel>
@@ -14,6 +15,10 @@ function RoomChip({ participantCount, roomId, onShareCode }) {
       <RoomChipMeta>
         {participantCount} {participantCount === 1 ? "person" : "people"} in room
       </RoomChipMeta>
+      <RoomChipSubMeta>{zoomLabel}</RoomChipSubMeta>
+      <RoomChipButton type="button" onClick={onResetView}>
+        Reset view
+      </RoomChipButton>
       <RoomChipButton type="button" onClick={onShareCode}>
         Copy ID
       </RoomChipButton>

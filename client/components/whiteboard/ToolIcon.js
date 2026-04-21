@@ -45,6 +45,21 @@ function ToolIcon({ kind }) {
     );
   }
 
+  if (kind === "hand") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path
+          d="M8 12V7a1 1 0 112 0v4m0 1V6a1 1 0 112 0v6m0-1V7.5a1 1 0 112 0V12m-6 0V8.5a1 1 0 00-2 0V15a4 4 0 004 4h2.4a4 4 0 003.5-2l1.2-2.2A2.5 2.5 0 0017 11h-1"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
+  }
+
   if (kind === "thickness") {
     return (
       <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -59,6 +74,21 @@ function ToolIcon({ kind }) {
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <path
           d="M6 7h12M9 7V5h6v2M8 7l1 12h6l1-12"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
+  }
+
+  if (kind === "reset") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path
+          d="M4 12a8 8 0 108-8 8.2 8.2 0 00-5.7 2.3M4 5v4h4"
           fill="none"
           stroke="currentColor"
           strokeWidth="1.8"

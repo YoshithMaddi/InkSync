@@ -1,13 +1,7 @@
 import { overlayPosition } from "./canvas";
 import { TextEditor } from "./styles";
 
-function TextEditorOverlay({
-  pendingText,
-  textInputRef,
-  onBlur,
-  onChange,
-  onKeyDown
-}) {
+function TextEditorOverlay({ camera, pendingText, textInputRef, onBlur, onChange, onKeyDown }) {
   if (!pendingText) {
     return null;
   }
@@ -15,7 +9,7 @@ function TextEditorOverlay({
   return (
     <TextEditor
       ref={textInputRef}
-      style={overlayPosition(pendingText)}
+      style={overlayPosition(pendingText, camera)}
       value={pendingText.text}
       onChange={onChange}
       onBlur={onBlur}

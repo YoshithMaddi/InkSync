@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createRoom, fetchRoom } from "../lib/api";
+import { ROOM_SYMBOLS, encodeRoomId, normalizeRoomCode } from "../lib/roomId";
 import {
   Eyebrow,
   Field,
@@ -16,10 +17,6 @@ import {
   Status
 } from "./lobbyStyles";
 
-function normalizeRoomCode(value) {
-  return value.trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
-}
-
 export default function LobbyCard() {
   const router = useRouter();
   const [roomCode, setRoomCode] = useState("");
@@ -31,7 +28,7 @@ export default function LobbyCard() {
       setIsLoading(true);
       setStatus("Creating a room...");
       const data = await createRoom();
-      router.push(`/room/${data.roomId}`);
+      router.push(`/room/${encodeRoomId(data.roomId)}`);
     } catch (error) {
       setStatus(error.message || "Could not create a room.");
     } finally {
@@ -52,7 +49,7 @@ export default function LobbyCard() {
       setIsLoading(true);
       setStatus("Checking room...");
       await fetchRoom(nextRoomCode);
-      router.push(`/room/${nextRoomCode}`);
+      router.push(`/room/${encodeRoomId(nextRoomCode)}`);
     } catch (error) {
       setStatus(error.message || "Room not found. Create one first.");
     } finally {
@@ -78,7 +75,7 @@ export default function LobbyCard() {
                 type="text"
                 value={roomCode}
                 onChange={(event) => setRoomCode(normalizeRoomCode(event.target.value))}
-                placeholder="AB12CD"
+                placeholder={`AB1${ROOM_SYMBOLS[0]}C${ROOM_SYMBOLS[1]}`}
                 autoComplete="off"
                 maxLength={6}
               />
@@ -89,7 +86,7 @@ export default function LobbyCard() {
           </Field>
         </FormStack>
       </Stack>
-      <Status>{status}</Status>
+      <Status>{status || `Allowed symbols: ${ROOM_SYMBOLS}`}</Status>
     </LobbyCardWrap>
   );
 }

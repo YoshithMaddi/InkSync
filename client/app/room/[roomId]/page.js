@@ -1,9 +1,10 @@
 import WhiteboardRoom from "../../../components/WhiteboardRoom";
 import { fetchRoom } from "../../../lib/api";
+import { normalizeRoomCode } from "../../../lib/roomId";
 
 export default async function RoomPage({ params }) {
   const { roomId } = await params;
-  const normalizedRoomId = roomId.toUpperCase();
+  const normalizedRoomId = normalizeRoomCode(decodeURIComponent(roomId));
 
   try {
     const room = await fetchRoom(normalizedRoomId);

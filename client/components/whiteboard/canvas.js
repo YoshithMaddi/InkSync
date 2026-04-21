@@ -1,4 +1,4 @@
-import { CANVAS_HEIGHT, CANVAS_WIDTH, TOOL_ERASER } from "./constants";
+import { TOOL_ERASER } from "./constants";
 
 export function createItemId(prefix) {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -59,7 +59,25 @@ export function drawTextElement(ctx, textItem) {
 }
 
 export function renderScene(ctx, strokes, texts, remoteDrafts, localDraft) {
-  ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+  const { width, height } = ctx.canvas;
+
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+  ctx.restore();
+
+  const camera = ctx.__camera || { x: 0, y: 0, zoom: 1 };
+  const dpr = ctx.__dpr || 1;
+  const viewWidth = width / dpr;
+  const viewHeight = height / dpr;
+
+  drawGrid(ctx, camera, viewWidth, viewHeight);
+
+  ctx.save();
+  ctx.scale(dpr, dpr);
+  ctx.translate(viewWidth / 2, viewHeight / 2);
+  ctx.scale(camera.zoom, camera.zoom);
+  ctx.translate(-camera.x, -camera.y);
 
   for (const stroke of strokes) {
     drawStroke(ctx, stroke);
@@ -76,22 +94,98 @@ export function renderScene(ctx, strokes, texts, remoteDrafts, localDraft) {
   if (localDraft) {
     drawStroke(ctx, localDraft);
   }
+
+  ctx.restore();
 }
 
-export function pointFromEvent(canvas, event) {
+function drawGrid(ctx, camera, viewWidth, viewHeight) {
+  const minorStep = 24 * camera.zoom;
+  const majorStep = minorStep * 5;
+  const offsetX = ((-camera.x * camera.zoom + viewWidth / 2) % minorStep + minorStep) % minorStep;
+  const offsetY = ((-camera.y * camera.zoom + viewHeight / 2) % minorStep + minorStep) % minorStep;
+  const majorOffsetX = ((-camera.x * camera.zoom + viewWidth / 2) % majorStep + majorStep) % majorStep;
+  const majorOffsetY = ((-camera.y * camera.zoom + viewHeight / 2) % majorStep + majorStep) % majorStep;
+
+  ctx.save();
+  ctx.fillStyle = "#fffefb";
+  ctx.fillRect(0, 0, viewWidth, viewHeight);
+
+  ctx.strokeStyle = "rgba(15, 23, 42, 0.025)";
+  ctx.lineWidth = 1;
+  for (let x = offsetX; x <= viewWidth; x += minorStep) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, viewHeight);
+    ctx.stroke();
+  }
+
+  for (let y = offsetY; y <= viewHeight; y += minorStep) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(viewWidth, y);
+    ctx.stroke();
+  }
+
+  ctx.strokeStyle = "rgba(15, 23, 42, 0.045)";
+  for (let x = majorOffsetX; x <= viewWidth; x += majorStep) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, viewHeight);
+    ctx.stroke();
+  }
+
+  for (let y = majorOffsetY; y <= viewHeight; y += majorStep) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(viewWidth, y);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+export function syncCanvasSize(canvas) {
   const bounds = canvas.getBoundingClientRect();
-  const scaleX = CANVAS_WIDTH / bounds.width;
-  const scaleY = CANVAS_HEIGHT / bounds.height;
+  const dpr = typeof window === "undefined" ? 1 : window.devicePixelRatio || 1;
+  const width = Math.max(Math.round(bounds.width * dpr), 1);
+  const height = Math.max(Math.round(bounds.height * dpr), 1);
+
+  if (canvas.width !== width || canvas.height !== height) {
+    canvas.width = width;
+    canvas.height = height;
+  }
 
   return {
-    x: (event.clientX - bounds.left) * scaleX,
-    y: (event.clientY - bounds.top) * scaleY
+    dpr,
+    width: bounds.width,
+    height: bounds.height
   };
 }
 
-export function overlayPosition(point) {
+export function pointFromEvent(canvas, event, camera) {
+  const bounds = canvas.getBoundingClientRect();
+  const screenX = event.clientX - bounds.left;
+  const screenY = event.clientY - bounds.top;
+
   return {
-    left: `${(point.x / CANVAS_WIDTH) * 100}%`,
-    top: `${(point.y / CANVAS_HEIGHT) * 100}%`
+    x: camera.x + (screenX - bounds.width / 2) / camera.zoom,
+    y: camera.y + (screenY - bounds.height / 2) / camera.zoom
+  };
+}
+
+export function overlayPosition(point, camera) {
+  return {
+    left: `${(point.x - camera.x) * camera.zoom}px`,
+    top: `${(point.y - camera.y) * camera.zoom}px`,
+    transform: "translate(calc(50vw - 6px), calc(50vh - 6px))"
+  };
+}
+
+export function zoomCameraAtPoint(camera, nextZoom, screenPoint) {
+  const zoomRatio = nextZoom / camera.zoom;
+
+  return {
+    x: camera.x + (screenPoint.x - screenPoint.x / zoomRatio) / camera.zoom,
+    y: camera.y + (screenPoint.y - screenPoint.y / zoomRatio) / camera.zoom,
+    zoom: nextZoom
   };
 }
