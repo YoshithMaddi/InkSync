@@ -26,7 +26,7 @@ function ToolboxPanel({
   return (
     <ToolboxCard aria-label="Whiteboard tools">
       <ToolboxHeader>
-        <ToolboxBadge>Tools</ToolboxBadge>
+        {/* <ToolboxBadge>Tools</ToolboxBadge> */}
       </ToolboxHeader>
 
       <ToolButtonGrid>

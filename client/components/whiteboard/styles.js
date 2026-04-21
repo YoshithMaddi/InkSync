@@ -150,6 +150,22 @@ export const RightDock = styled.div`
   }
 `;
 
+export const LeftDock = styled.div`
+  position: fixed;
+  left: 22px;
+  top: 80px;
+  z-index: 32;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+
+  @media (max-width: 720px) {
+    left: 14px;
+    top: 76px;
+  }
+`;
+
 export const RoomChipCard = styled.aside`
   ${cardSurface};
   min-width: 180px;

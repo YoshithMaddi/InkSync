@@ -29,6 +29,7 @@ import {
   CanvasStack,
   CanvasStage,
   CanvasSurface,
+  LeftDock,
   RightDock,
   RoomErrorCopy,
   RoomErrorTitle,
@@ -449,7 +450,9 @@ export default function WhiteboardRoom({
           onResetView={resetView}
           onShareCode={handleShareCode}
         />
+      </RightDock>
 
+      <LeftDock>
         <ToolboxPanel
           activeTool={activeTool}
           brushColor={brushColor}
@@ -459,7 +462,7 @@ export default function WhiteboardRoom({
           onClearBoard={handleClearBoard}
           onToolChange={setActiveTool}
         />
-      </RightDock>
+      </LeftDock>
     </BoardShell>
   );
 }
