@@ -484,6 +484,82 @@ export const HistoryDock = styled.div`
   }
 `;
 
+export const MobileContextPanel = styled.section`
+  ${cardSurface};
+  display: none;
+
+  @media (max-width: 720px) {
+    display: ${({ $visible }) => ($visible ? "grid" : "none")};
+    position: fixed;
+    left: 14px;
+    right: 74px;
+    bottom: 18px;
+    z-index: 34;
+    gap: 10px;
+    padding: 12px 14px;
+    border-radius: 24px;
+    background: rgba(255, 252, 246, 0.82);
+    animation: mobileContextFloatIn 220ms ease-in-out;
+  }
+
+  @keyframes mobileContextFloatIn {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+`;
+
+export const MobileContextLabel = styled.div`
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+`;
+
+export const MobileControlRow = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+`;
+
+export const MobileColorButton = styled.label`
+  ${controlSurface};
+  width: 46px;
+  height: 46px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+`;
+
+export const MobileColorInput = styled.input`
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  background: transparent;
+`;
+
+export const MobileRangeWrap = styled.label`
+  ${controlSurface};
+  min-height: 46px;
+  flex: 1;
+  display: grid;
+  align-items: center;
+  padding: 0 12px;
+`;
+
+export const MobileRange = styled.input`
+  width: 100%;
+`;
+
 export const ToolboxHeader = styled.div`
   display: grid;
   justify-items: center;
