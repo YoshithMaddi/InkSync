@@ -50,6 +50,8 @@ export default function WhiteboardRoom({
   const socketRef = useRef(null);
   const currentStrokeRef = useRef(null);
   const textDragRef = useRef(null);
+  const textUpdateTimerRef = useRef(null);
+  const editingTextRef = useRef(null);
   const cameraRef = useRef(DEFAULT_CAMERA);
   const panStateRef = useRef(null);
   const sceneRef = useRef({
@@ -75,6 +77,7 @@ export default function WhiteboardRoom({
   const [canRedo, setCanRedo] = useState(false);
   const [cursorPos, setCursorPos] = useState(null);
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
+  const [textLocks, setTextLocks] = useState({});
 
   function updateCamera(nextCamera) {
     cameraRef.current = nextCamera;
@@ -103,7 +106,9 @@ export default function WhiteboardRoom({
       currentStrokeRef.current,
       activeTool,
       brushSize,
-      cursorPos
+      cursorPos,
+      textLocks,
+      clientId
     );
   }
 
@@ -139,7 +144,37 @@ export default function WhiteboardRoom({
     setClientId(getOrCreateClientId());
   }, []);
 
+  useEffect(() => {
+    editingTextRef.current = editingText;
+  }, [editingText]);
+
   const selectedText = editingText || texts.find((textItem) => textItem.id === selectedTextId) || null;
+  const isLockedByCurrentUser = Boolean(editingText && textLocks[editingText.id]?.userId === clientId);
+
+  function emitLiveTextUpdate(nextText) {
+    socketRef.current?.emit("TEXT_UPDATE", {
+      roomId,
+      textItem: nextText
+    });
+  }
+
+  function scheduleLiveTextUpdate(nextText) {
+    if (textUpdateTimerRef.current) {
+      window.clearTimeout(textUpdateTimerRef.current);
+    }
+
+    textUpdateTimerRef.current = window.setTimeout(() => {
+      emitLiveTextUpdate(nextText);
+      textUpdateTimerRef.current = null;
+    }, 240);
+  }
+
+  function releasePendingTextUpdate() {
+    if (textUpdateTimerRef.current) {
+      window.clearTimeout(textUpdateTimerRef.current);
+      textUpdateTimerRef.current = null;
+    }
+  }
 
   useEffect(() => {
     if (editingText && textInputRef.current) {
@@ -172,6 +207,7 @@ export default function WhiteboardRoom({
       setRoomError("");
       setStrokes(Array.isArray(payload.strokes) ? payload.strokes : []);
       setTexts(Array.isArray(payload.texts) ? payload.texts : []);
+      setTextLocks(payload?.textLocks || {});
       setParticipantCount(Number(payload.participantCount) || 0);
       setRemoteDrafts({});
     });
@@ -183,6 +219,34 @@ export default function WhiteboardRoom({
     socket.on("history-state", (payload) => {
       setCanUndo(Boolean(payload?.canUndo));
       setCanRedo(Boolean(payload?.canRedo));
+    });
+
+    socket.on("text-live-updated", ({ textItem }) => {
+      if (!textItem?.id) {
+        return;
+      }
+
+      const hasVisibleText = typeof textItem.text === "string" && textItem.text.trim().length > 0;
+
+      if (textItem.deleted || !hasVisibleText) {
+        setTexts((currentTexts) => currentTexts.filter((item) => item.id !== textItem.id));
+        return;
+      }
+
+      setTexts((currentTexts) => {
+        const existingIndex = currentTexts.findIndex((item) => item.id === textItem.id);
+        if (existingIndex === -1) {
+          return [...currentTexts, textItem];
+        }
+
+        return currentTexts.map((item) => (item.id === textItem.id ? { ...item, ...textItem } : item));
+      });
+    });
+
+    socket.on("text-lock-denied", ({ textId }) => {
+      if (editingText?.id === textId) {
+        setEditingText(null);
+      }
     });
 
     socket.on("stroke-started", ({ senderId, stroke }) => {
@@ -213,6 +277,7 @@ export default function WhiteboardRoom({
       setRoomError(payload?.error || "Room not found.Nor muskoni first room create cheyyu ra barre.");
       setEditingText(null);
       setSelectedTextId(null);
+      setTextLocks({});
       setIsDrawing(false);
       currentStrokeRef.current = null;
       socket.disconnect();
@@ -247,9 +312,24 @@ export default function WhiteboardRoom({
     const hitText = findTextAtPoint(texts, point);
 
     if (activeTool === TOOL_TEXT) {
+      const currentEditingText = editingTextRef.current;
+      if (currentEditingText && currentEditingText.id !== hitText?.id) {
+        submitText(currentEditingText);
+      }
+
       if (hitText) {
+        if (textLocks[hitText.id] && textLocks[hitText.id].userId !== clientId) {
+          setSelectedTextId(hitText.id);
+          return;
+        }
+
         setSelectedTextId(hitText.id);
         setEditingText(hitText);
+        socketRef.current?.emit("TEXT_START", {
+          roomId,
+          textId: hitText.id,
+          textItem: hitText
+        });
       } else {
         const nextText = {
           id: createItemId("text"),
@@ -262,6 +342,11 @@ export default function WhiteboardRoom({
         };
         setSelectedTextId(nextText.id);
         setEditingText(nextText);
+        socketRef.current?.emit("TEXT_START", {
+          roomId,
+          textId: nextText.id,
+          textItem: nextText
+        });
       }
       return;
     }
@@ -444,40 +529,45 @@ export default function WhiteboardRoom({
     socketRef.current?.emit("redo", { roomId });
   }
 
-  function submitText() {
+  function submitText(targetText = editingTextRef.current) {
     if (roomError) {
       return;
     }
 
-    if (!editingText) {
+    if (!targetText) {
       return;
     }
 
-    const text = (textInputRef.current?.innerText || editingText.text || "").trim();
+    releasePendingTextUpdate();
+    const text = (textInputRef.current?.innerText || targetText.text || "").trim();
     if (!text) {
-      const existingText = texts.find((textItem) => textItem.id === editingText.id);
+      const existingText = texts.find((textItem) => textItem.id === targetText.id);
+      socketRef.current?.emit("TEXT_COMMIT", {
+        roomId,
+        textItem: {
+          ...(existingText || targetText),
+          text: "",
+          deleted: true
+        }
+      });
+
       if (existingText) {
-        socketRef.current?.emit("add-text", {
-          roomId,
-          textItem: {
-            ...existingText,
-            deleted: true
-          }
-        });
-        setTexts((currentTexts) => currentTexts.filter((textItem) => textItem.id !== editingText.id));
+        setTexts((currentTexts) => currentTexts.filter((textItem) => textItem.id !== targetText.id));
       }
 
-      setEditingText(null);
-      setSelectedTextId(null);
+      if (editingTextRef.current?.id === targetText.id) {
+        setEditingText(null);
+        setSelectedTextId(null);
+      }
       return;
     }
 
     const nextText = {
-      ...editingText,
+      ...targetText,
       text
     };
 
-    socketRef.current?.emit("add-text", {
+    socketRef.current?.emit("TEXT_COMMIT", {
       roomId,
       textItem: nextText
     });
@@ -489,20 +579,44 @@ export default function WhiteboardRoom({
 
       return currentTexts.map((textItem) => (textItem.id === nextText.id ? nextText : textItem));
     });
-    setEditingText(null);
-    setSelectedTextId(nextText.id);
+    if (editingTextRef.current?.id === nextText.id) {
+      setEditingText(null);
+      setSelectedTextId(nextText.id);
+    }
   }
 
   function handleTextKeyDown(event) {
     if (event.key === "Escape") {
-      setEditingText(null);
-      setSelectedTextId(null);
+      event.preventDefault();
+      submitText();
     }
   }
 
   function handleTextInput(event) {
     const nextText = event.currentTarget.innerText.replace(/\r/g, "");
-    setEditingText((currentText) => (currentText ? { ...currentText, text: nextText } : currentText));
+    setEditingText((currentText) => {
+      if (!currentText) {
+        return currentText;
+      }
+
+      const updatedText = { ...currentText, text: nextText };
+      scheduleLiveTextUpdate(updatedText);
+      setTexts((currentTexts) => {
+        const existingIndex = currentTexts.findIndex((item) => item.id === updatedText.id);
+        const hasVisibleText = updatedText.text.trim().length > 0;
+
+        if (!hasVisibleText) {
+          return currentTexts.filter((item) => item.id !== updatedText.id);
+        }
+
+        if (existingIndex === -1) {
+          return [...currentTexts, updatedText];
+        }
+
+        return currentTexts.map((item) => (item.id === updatedText.id ? updatedText : item));
+      });
+      return updatedText;
+    });
   }
 
   function handleToggleBold() {
@@ -554,6 +668,28 @@ export default function WhiteboardRoom({
       )
     );
   }
+
+  useEffect(() => {
+    if (editingText && textLocks[editingText.id] && textLocks[editingText.id].userId !== clientId) {
+      setEditingText(null);
+    }
+  }, [clientId, editingText, textLocks]);
+
+  useEffect(() => {
+    if (!editingText) {
+      return undefined;
+    }
+
+    return () => {
+      releasePendingTextUpdate();
+    };
+  }, [editingText]);
+
+  useEffect(() => {
+    if (editingText && activeTool !== TOOL_TEXT) {
+      submitText();
+    }
+  }, [activeTool]);
 
   useEffect(() => {
     function handleHistoryShortcuts(event) {
@@ -628,6 +764,7 @@ export default function WhiteboardRoom({
           <TextEditorOverlay
             camera={camera}
             editingText={editingText}
+            isLockedByCurrentUser={isLockedByCurrentUser}
             selectedText={selectedText}
             textInputRef={textInputRef}
             viewport={viewport}
@@ -657,6 +794,7 @@ export default function WhiteboardRoom({
           brushSize={brushSize}
           canRedo={canRedo}
           canUndo={canUndo}
+          isDrawing={isDrawing}
           onBrushColorChange={(event) => setBrushColor(event.target.value)}
           onBrushSizeChange={(event) => setBrushSize(event.target.value)}
           onClearBoard={handleClearBoard}

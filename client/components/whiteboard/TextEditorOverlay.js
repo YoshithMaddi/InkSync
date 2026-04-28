@@ -17,6 +17,7 @@ function toolbarPosition(textItem, camera, viewport) {
 function TextEditorOverlay({
   camera,
   editingText,
+  isLockedByCurrentUser,
   selectedText,
   textInputRef,
   viewport,
@@ -31,12 +32,29 @@ function TextEditorOverlay({
       return;
     }
 
-    const selection = window.getSelection();
-    const range = document.createRange();
-    range.selectNodeContents(textInputRef.current);
-    range.collapse(false);
-    selection?.removeAllRanges();
-    selection?.addRange(range);
+    const focusEditor = () => {
+      const editor = textInputRef.current;
+      if (!editor) {
+        return;
+      }
+
+      editor.focus();
+      const selection = window.getSelection();
+      const range = document.createRange();
+      range.selectNodeContents(editor);
+      range.collapse(false);
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+    };
+
+    const frameId = window.requestAnimationFrame(() => {
+      focusEditor();
+      window.setTimeout(focusEditor, 0);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
   }, [editingText, textInputRef]);
 
   return (
@@ -63,8 +81,9 @@ function TextEditorOverlay({
       {editingText ? (
         <TextEditor
           ref={textInputRef}
-          contentEditable
+          contentEditable={isLockedByCurrentUser}
           suppressContentEditableWarning
+          spellCheck={false}
           data-placeholder="Type text"
           style={{
             ...overlayPosition(editingText, camera, viewport),

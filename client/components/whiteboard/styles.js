@@ -392,6 +392,98 @@ export const ToolboxCard = styled.section`
   
 `;
 
+export const DesktopToolboxCard = styled(ToolboxCard)`
+  @media (max-width: 720px) {
+    display: none;
+  }
+`;
+
+export const MobileToolEdge = styled.button`
+  ${cardSurface};
+  display: none;
+
+  @media (max-width: 720px) {
+    display: inline-flex;
+    width: 40px;
+    min-height: 112px;
+    align-items: center;
+    justify-content: center;
+    padding: 10px 0;
+    border-radius: 0 18px 18px 0;
+    background: rgba(255, 252, 246, ${({ $dimmed }) => ($dimmed ? 0.38 : 0.56)});
+    color: var(--text);
+    opacity: ${({ $open, $dimmed }) => ($open ? 0 : $dimmed ? 0.46 : 0.72)};
+    pointer-events: ${({ $open }) => ($open ? "none" : "auto")};
+    transition: opacity 220ms ease-in-out, transform 220ms ease-in-out;
+    transform: ${({ $open }) => ($open ? "translateX(-8px)" : "translateX(0)")};
+  }
+`;
+
+export const MobileToolbarBackdrop = styled.button`
+  display: none;
+
+  @media (max-width: 720px) {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    border: none;
+    background: transparent;
+    opacity: ${({ $open }) => ($open ? 1 : 0)};
+    pointer-events: ${({ $open }) => ($open ? "auto" : "none")};
+  }
+`;
+
+export const MobileToolRail = styled.section`
+  ${cardSurface};
+  display: none;
+
+  @media (max-width: 720px) {
+    display: flex;
+    position: fixed;
+    left: 14px;
+    top: 86px;
+    z-index: 41;
+    flex-direction: column;
+    gap: 8px;
+    width: 80px;
+    padding: 10px 8px;
+    border-radius: 24px;
+    background: rgba(255, 252, 246, 0.84);
+    transform: translateX(${({ $open }) => ($open ? "0" : "-112px")});
+    opacity: ${({ $open }) => ($open ? 1 : 0)};
+    pointer-events: ${({ $open }) => ($open ? "auto" : "none")};
+    transition: transform 230ms ease-in-out, opacity 230ms ease-in-out;
+  }
+`;
+
+export const MobileRailLabel = styled.div`
+  display: none;
+
+  @media (max-width: 720px) {
+    display: block;
+    padding: 2px 4px 6px;
+    font-size: 0.68rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+`;
+
+export const HistoryDock = styled.div`
+  display: none;
+
+  @media (max-width: 720px) {
+    display: flex;
+    position: fixed;
+    right: 14px;
+    bottom: 126px;
+    z-index: 34;
+    flex-direction: column;
+    gap: 10px;
+  }
+`;
+
 export const ToolboxHeader = styled.div`
   display: grid;
   justify-items: center;

@@ -17,6 +17,7 @@ const PORT = Number(process.env.PORT || 4000);
 const ROOM_LENGTH = 6;
 const ROOM_SYMBOLS = "@#$&%+!";
 const ROOM_CHARSET = `ABCDEFGHJKLMNPQRSTUVWXYZ23456789${ROOM_SYMBOLS}`;
+const TEXT_LOCK_TIMEOUT_MS = 15000;
 const rooms = new Map();
 
 app.use(
@@ -52,6 +53,8 @@ function getOrCreateRoom(roomId) {
       operations: [],
       undoStacks: new Map(),
       redoStacks: new Map(),
+      textLocks: new Map(),
+      liveTexts: new Map(),
       strokes: [],
       texts: [],
       createdAt: Date.now()
@@ -70,10 +73,30 @@ function getParticipantCount(roomId) {
 }
 
 function buildRoomPayload(room) {
+  const liveTexts = Array.from(room.liveTexts.values());
+  const mergedTextsById = new Map(room.texts.map((textItem) => [textItem.id, textItem]));
+  for (const textItem of liveTexts) {
+    const hasVisibleText = typeof textItem.text === "string" && textItem.text.trim().length > 0;
+    if (textItem.deleted) {
+      mergedTextsById.delete(textItem.id);
+    } else if (hasVisibleText || mergedTextsById.has(textItem.id)) {
+      mergedTextsById.set(textItem.id, textItem);
+    }
+  }
+
   return {
     roomId: room.roomId,
     strokes: room.strokes,
-    texts: room.texts,
+    texts: Array.from(mergedTextsById.values()),
+    textLocks: Object.fromEntries(
+      Array.from(room.textLocks.entries()).map(([textId, lock]) => [
+        textId,
+        {
+          userId: lock.userId,
+          expiresAt: lock.expiresAt
+        }
+      ])
+    ),
     createdAt: room.createdAt,
     participantCount: getParticipantCount(room.roomId)
   };
@@ -102,7 +125,7 @@ function rebuildRoomScene(room) {
   for (const operation of room.operations) {
     if (operation.type === "clear") {
       nextStrokes.length = 0;
-      nextTexts.length = 0;
+      nextTextsById.clear();
       continue;
     }
 
@@ -146,6 +169,60 @@ function appendOperation(room, operation) {
 function removeOperation(room, operationId) {
   room.operations = room.operations.filter((operation) => operation.id !== operationId);
   rebuildRoomScene(room);
+}
+
+function clearTextLockTimer(lock) {
+  if (lock?.timeoutId) {
+    clearTimeout(lock.timeoutId);
+  }
+}
+
+function releaseTextLock(room, textId, userId) {
+  const currentLock = room.textLocks.get(textId);
+  if (!currentLock) {
+    return false;
+  }
+
+  if (userId && currentLock.userId !== userId) {
+    return false;
+  }
+
+  clearTextLockTimer(currentLock);
+  room.textLocks.delete(textId);
+  return true;
+}
+
+function releaseUserTextLocks(room, userId) {
+  let didReleaseAnyLock = false;
+
+  for (const [textId, lock] of room.textLocks.entries()) {
+    if (lock.userId === userId) {
+      didReleaseAnyLock = true;
+      releaseTextLock(room, textId, userId);
+    }
+  }
+
+  return didReleaseAnyLock;
+}
+
+function lockText(room, roomId, textId, userId) {
+  const existingLock = room.textLocks.get(textId);
+  if (existingLock && existingLock.userId !== userId) {
+    return false;
+  }
+
+  clearTextLockTimer(existingLock);
+  const nextLock = {
+    userId,
+    expiresAt: Date.now() + TEXT_LOCK_TIMEOUT_MS,
+    timeoutId: setTimeout(() => {
+      if (releaseTextLock(room, textId)) {
+        broadcastRoomState(room);
+      }
+    }, TEXT_LOCK_TIMEOUT_MS)
+  };
+  room.textLocks.set(textId, nextLock);
+  return true;
 }
 
 app.get("/health", (_request, response) => {
@@ -278,6 +355,98 @@ io.on("connection", (socket) => {
     emitHistoryState(socket, room, userId);
   });
 
+  socket.on("TEXT_START", ({ roomId, textId, textItem }) => {
+    const room = getRoom(roomId);
+    const userId = socket.data.userId;
+    if (!room || !userId || !textId) {
+      return;
+    }
+
+    if (!lockText(room, roomId, textId, userId)) {
+      socket.emit("text-lock-denied", { textId });
+      return;
+    }
+
+    if (textItem && typeof textItem.text === "string" && textItem.text.trim().length > 0) {
+      room.liveTexts.set(textId, {
+        ...textItem,
+        userId
+      });
+    }
+
+    broadcastRoomState(room);
+  });
+
+  socket.on("TEXT_UPDATE", ({ roomId, textItem }) => {
+    const room = getRoom(roomId);
+    const userId = socket.data.userId;
+    if (!room || !userId || !textItem?.id) {
+      return;
+    }
+
+    const currentLock = room.textLocks.get(textItem.id);
+    if (!currentLock || currentLock.userId !== userId) {
+      return;
+    }
+
+    lockText(room, roomId, textItem.id, userId);
+    const nextLiveText = {
+      ...textItem,
+      userId
+    };
+    if (typeof nextLiveText.text === "string" && nextLiveText.text.trim().length > 0) {
+      room.liveTexts.set(textItem.id, nextLiveText);
+      io.to(room.roomId).emit("text-live-updated", {
+        textItem: room.liveTexts.get(textItem.id)
+      });
+    } else {
+      room.liveTexts.delete(textItem.id);
+      io.to(room.roomId).emit("text-live-updated", {
+        textItem: {
+          ...nextLiveText,
+          deleted: true
+        }
+      });
+    }
+    broadcastRoomState(room);
+  });
+
+  socket.on("TEXT_COMMIT", ({ roomId, textItem }) => {
+    const room = getRoom(roomId);
+    const userId = socket.data.userId;
+    if (!room || !userId || !textItem?.id) {
+      return;
+    }
+
+    const currentLock = room.textLocks.get(textItem.id);
+    if (!currentLock || currentLock.userId !== userId) {
+      return;
+    }
+
+    room.liveTexts.delete(textItem.id);
+    const hasPersistedText = room.texts.some((item) => item.id === textItem.id);
+    const isDeletedCommit = Boolean(textItem.deleted) || !String(textItem.text || "").trim();
+
+    if (!(isDeletedCommit && !hasPersistedText)) {
+      appendOperation(room, {
+        id: randomUUID(),
+        userId,
+        type: "text",
+        payload: {
+          textItem: {
+            ...textItem,
+            userId,
+            deleted: isDeletedCommit
+          }
+        },
+        timestamp: Date.now()
+      });
+    }
+    releaseTextLock(room, textItem.id, userId);
+    broadcastRoomState(room);
+    emitHistoryState(socket, room, userId);
+  });
+
   socket.on("clear-board", ({ roomId }) => {
     const room = getRoom(roomId);
     const userId = socket.data.userId;
@@ -342,8 +511,20 @@ io.on("connection", (socket) => {
 
   socket.on("disconnect", () => {
     const roomId = socket.data.roomId;
+    const userId = socket.data.userId;
     if (!roomId || !rooms.has(roomId)) {
       return;
+    }
+
+    const room = rooms.get(roomId);
+    if (userId && room) {
+      releaseUserTextLocks(room, userId);
+      for (const [textId, textItem] of room.liveTexts.entries()) {
+        if (textItem.userId === userId) {
+          room.liveTexts.delete(textId);
+        }
+      }
+      broadcastRoomState(room);
     }
 
     io.to(roomId).emit("participant-count", {

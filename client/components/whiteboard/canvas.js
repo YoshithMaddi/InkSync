@@ -83,7 +83,35 @@ export function drawTextElement(ctx, textItem) {
   ctx.restore();
 }
 
-export function renderScene(ctx, strokes, texts, remoteDrafts, localDraft, activeTool, brushSize, cursorPos) {
+function drawTextLockIndicator(ctx, textItem, lockInfo, currentUserId) {
+  const bounds = getTextBounds(textItem);
+  const isLockedByCurrentUser = lockInfo?.userId === currentUserId;
+
+  ctx.save();
+  ctx.strokeStyle = isLockedByCurrentUser ? "rgba(37, 99, 235, 0.85)" : "rgba(249, 115, 22, 0.9)";
+  ctx.setLineDash([6, 4]);
+  ctx.lineWidth = 1.4;
+  ctx.strokeRect(bounds.left - 6, bounds.top - 6, bounds.width + 12, bounds.height + 12);
+  ctx.setLineDash([]);
+  ctx.fillStyle = isLockedByCurrentUser ? "rgba(37, 99, 235, 0.9)" : "rgba(249, 115, 22, 0.92)";
+  ctx.font = "600 12px sans-serif";
+  ctx.textBaseline = "bottom";
+  ctx.fillText(isLockedByCurrentUser ? "Editing" : "User is editing", bounds.left - 4, bounds.top - 10);
+  ctx.restore();
+}
+
+export function renderScene(
+  ctx,
+  strokes,
+  texts,
+  remoteDrafts,
+  localDraft,
+  activeTool,
+  brushSize,
+  cursorPos,
+  textLocks,
+  currentUserId
+) {
   const { width, height } = ctx.canvas;
 
   ctx.save();
@@ -107,7 +135,17 @@ export function renderScene(ctx, strokes, texts, remoteDrafts, localDraft, activ
   }
 
   for (const textItem of texts) {
-    drawTextElement(ctx, textItem);
+    const lockInfo = textLocks?.[textItem.id];
+    const isLockedByCurrentUser = lockInfo?.userId === currentUserId;
+    const hasVisibleText = typeof textItem?.text === "string" && textItem.text.trim().length > 0;
+
+    if (!isLockedByCurrentUser) {
+      drawTextElement(ctx, textItem);
+    }
+
+    if (lockInfo && hasVisibleText && !isLockedByCurrentUser) {
+      drawTextLockIndicator(ctx, textItem, lockInfo, currentUserId);
+    }
   }
 
   for (const stroke of Object.values(remoteDrafts)) {
