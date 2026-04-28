@@ -1,5 +1,15 @@
 import { TOOL_ERASER } from "./constants";
 
+let measurementCanvas;
+
+function getMeasurementContext() {
+  if (!measurementCanvas && typeof document !== "undefined") {
+    measurementCanvas = document.createElement("canvas");
+  }
+
+  return measurementCanvas?.getContext("2d") || null;
+}
+
 export function createItemId(prefix) {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return `${prefix}-${crypto.randomUUID()}`;
@@ -19,14 +29,6 @@ export function drawStroke(ctx, stroke) {
   ctx.lineWidth = stroke.size;
   ctx.lineJoin = "round";
   ctx.lineCap = "round";
-  ctx.beginPath();
-  ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
-
-  for (let index = 1; index < stroke.points.length; index += 1) {
-    const point = stroke.points[index];
-    ctx.lineTo(point.x, point.y);
-  }
-
   if (stroke.points.length === 1) {
     const point = stroke.points[0];
     ctx.beginPath();
@@ -37,6 +39,29 @@ export function drawStroke(ctx, stroke) {
     return;
   }
 
+  if (stroke.points.length === 2) {
+    ctx.beginPath();
+    ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
+    ctx.lineTo(stroke.points[1].x, stroke.points[1].y);
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
+
+  ctx.beginPath();
+  ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
+
+  for (let index = 1; index < stroke.points.length - 1; index += 1) {
+    const currentPoint = stroke.points[index];
+    const nextPoint = stroke.points[index + 1];
+    const midPointX = (currentPoint.x + nextPoint.x) / 2;
+    const midPointY = (currentPoint.y + nextPoint.y) / 2;
+    ctx.quadraticCurveTo(currentPoint.x, currentPoint.y, midPointX, midPointY);
+  }
+
+  const secondLastPoint = stroke.points[stroke.points.length - 2];
+  const lastPoint = stroke.points[stroke.points.length - 1];
+  ctx.quadraticCurveTo(secondLastPoint.x, secondLastPoint.y, lastPoint.x, lastPoint.y);
   ctx.stroke();
   ctx.restore();
 }
@@ -48,7 +73,7 @@ export function drawTextElement(ctx, textItem) {
 
   ctx.save();
   ctx.fillStyle = textItem.color;
-  ctx.font = `${textItem.size || 28}px sans-serif`;
+  ctx.font = `${textItem.fontWeight || 400} ${textItem.size || 28}px sans-serif`;
   ctx.textBaseline = "top";
 
   const lines = textItem.text.split("\n");
@@ -58,7 +83,35 @@ export function drawTextElement(ctx, textItem) {
   ctx.restore();
 }
 
-export function renderScene(ctx, strokes, texts, remoteDrafts, localDraft, activeTool, brushSize, cursorPos) {
+function drawTextLockIndicator(ctx, textItem, lockInfo, currentUserId) {
+  const bounds = getTextBounds(textItem);
+  const isLockedByCurrentUser = lockInfo?.userId === currentUserId;
+
+  ctx.save();
+  ctx.strokeStyle = isLockedByCurrentUser ? "rgba(37, 99, 235, 0.85)" : "rgba(249, 115, 22, 0.9)";
+  ctx.setLineDash([6, 4]);
+  ctx.lineWidth = 1.4;
+  ctx.strokeRect(bounds.left - 6, bounds.top - 6, bounds.width + 12, bounds.height + 12);
+  ctx.setLineDash([]);
+  ctx.fillStyle = isLockedByCurrentUser ? "rgba(37, 99, 235, 0.9)" : "rgba(249, 115, 22, 0.92)";
+  ctx.font = "600 12px sans-serif";
+  ctx.textBaseline = "bottom";
+  ctx.fillText(isLockedByCurrentUser ? "Editing" : "User is editing", bounds.left - 4, bounds.top - 10);
+  ctx.restore();
+}
+
+export function renderScene(
+  ctx,
+  strokes,
+  texts,
+  remoteDrafts,
+  localDraft,
+  activeTool,
+  brushSize,
+  cursorPos,
+  textLocks,
+  currentUserId
+) {
   const { width, height } = ctx.canvas;
 
   ctx.save();
@@ -82,7 +135,17 @@ export function renderScene(ctx, strokes, texts, remoteDrafts, localDraft, activ
   }
 
   for (const textItem of texts) {
-    drawTextElement(ctx, textItem);
+    const lockInfo = textLocks?.[textItem.id];
+    const isLockedByCurrentUser = lockInfo?.userId === currentUserId;
+    const hasVisibleText = typeof textItem?.text === "string" && textItem.text.trim().length > 0;
+
+    if (!isLockedByCurrentUser) {
+      drawTextElement(ctx, textItem);
+    }
+
+    if (lockInfo && hasVisibleText && !isLockedByCurrentUser) {
+      drawTextLockIndicator(ctx, textItem, lockInfo, currentUserId);
+    }
   }
 
   for (const stroke of Object.values(remoteDrafts)) {
@@ -193,6 +256,59 @@ export function overlayPosition(point, camera, viewport) {
     left: `${width / 2 + (point.x - camera.x) * camera.zoom}px`,
     top: `${height / 2 + (point.y - camera.y) * camera.zoom}px`
   };
+}
+
+export function measureTextItem(textItem) {
+  const fallbackSize = textItem?.size || 28;
+  const lines = (textItem?.text || "").split("\n");
+  const ctx = getMeasurementContext();
+  const lineHeight = fallbackSize + 6;
+
+  if (!ctx) {
+    const longestLineLength = lines.reduce((longest, line) => Math.max(longest, line.length), 1);
+    return {
+      width: Math.max(longestLineLength * fallbackSize * 0.58, 80),
+      height: Math.max(lines.length * lineHeight, fallbackSize + 12)
+    };
+  }
+
+  ctx.font = `${textItem?.fontWeight || 400} ${fallbackSize}px sans-serif`;
+  const width = lines.reduce((longest, line) => Math.max(longest, ctx.measureText(line || " ").width), 0);
+
+  return {
+    width: Math.max(width, 80),
+    height: Math.max(lines.length * lineHeight, fallbackSize + 12)
+  };
+}
+
+export function getTextBounds(textItem) {
+  const { width, height } = measureTextItem(textItem);
+
+  return {
+    left: textItem.x,
+    top: textItem.y,
+    right: textItem.x + width,
+    bottom: textItem.y + height,
+    width,
+    height
+  };
+}
+
+export function findTextAtPoint(texts, point) {
+  for (let index = texts.length - 1; index >= 0; index -= 1) {
+    const textItem = texts[index];
+    const bounds = getTextBounds(textItem);
+    if (
+      point.x >= bounds.left &&
+      point.x <= bounds.right &&
+      point.y >= bounds.top &&
+      point.y <= bounds.bottom
+    ) {
+      return textItem;
+    }
+  }
+
+  return null;
 }
 
 export function zoomCameraAtPoint(camera, nextZoom, screenPoint) {

@@ -3,8 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
 import { API_URL } from "../lib/api";
+import { getOrCreateClientId } from "../lib/session";
 import {
   createItemId,
+  findTextAtPoint,
   pointFromEvent,
   renderScene,
   syncCanvasSize,
@@ -47,9 +49,11 @@ export default function WhiteboardRoom({
   const textInputRef = useRef(null);
   const socketRef = useRef(null);
   const currentStrokeRef = useRef(null);
+  const textDragRef = useRef(null);
+  const textUpdateTimerRef = useRef(null);
+  const editingTextRef = useRef(null);
   const cameraRef = useRef(DEFAULT_CAMERA);
   const panStateRef = useRef(null);
-  const blurGuardUntilRef = useRef(0);
   const sceneRef = useRef({
     strokes: initialStrokes,
     texts: initialTexts,
@@ -65,10 +69,15 @@ export default function WhiteboardRoom({
   const [isDrawing, setIsDrawing] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
   const [remoteDrafts, setRemoteDrafts] = useState({});
-  const [pendingText, setPendingText] = useState(null);
+  const [editingText, setEditingText] = useState(null);
+  const [selectedTextId, setSelectedTextId] = useState(null);
   const [camera, setCamera] = useState(DEFAULT_CAMERA);
+  const [clientId, setClientId] = useState("");
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
   const [cursorPos, setCursorPos] = useState(null);
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
+  const [textLocks, setTextLocks] = useState({});
 
   function updateCamera(nextCamera) {
     cameraRef.current = nextCamera;
@@ -97,7 +106,9 @@ export default function WhiteboardRoom({
       currentStrokeRef.current,
       activeTool,
       brushSize,
-      cursorPos
+      cursorPos,
+      textLocks,
+      clientId
     );
   }
 
@@ -130,7 +141,43 @@ export default function WhiteboardRoom({
   }, [strokes, texts, remoteDrafts, camera, activeTool, brushSize, cursorPos]);
 
   useEffect(() => {
-    if (pendingText && textInputRef.current) {
+    setClientId(getOrCreateClientId());
+  }, []);
+
+  useEffect(() => {
+    editingTextRef.current = editingText;
+  }, [editingText]);
+
+  const selectedText = editingText || texts.find((textItem) => textItem.id === selectedTextId) || null;
+  const isLockedByCurrentUser = Boolean(editingText && textLocks[editingText.id]?.userId === clientId);
+
+  function emitLiveTextUpdate(nextText) {
+    socketRef.current?.emit("TEXT_UPDATE", {
+      roomId,
+      textItem: nextText
+    });
+  }
+
+  function scheduleLiveTextUpdate(nextText) {
+    if (textUpdateTimerRef.current) {
+      window.clearTimeout(textUpdateTimerRef.current);
+    }
+
+    textUpdateTimerRef.current = window.setTimeout(() => {
+      emitLiveTextUpdate(nextText);
+      textUpdateTimerRef.current = null;
+    }, 240);
+  }
+
+  function releasePendingTextUpdate() {
+    if (textUpdateTimerRef.current) {
+      window.clearTimeout(textUpdateTimerRef.current);
+      textUpdateTimerRef.current = null;
+    }
+  }
+
+  useEffect(() => {
+    if (editingText && textInputRef.current) {
       const focusTimer = window.setTimeout(() => {
         textInputRef.current?.focus();
       }, 0);
@@ -139,9 +186,13 @@ export default function WhiteboardRoom({
         window.clearTimeout(focusTimer);
       };
     }
-  }, [pendingText]);
+  }, [editingText]);
 
   useEffect(() => {
+    if (!clientId) {
+      return undefined;
+    }
+
     const socket = io(API_URL, {
       transports: ["websocket"]
     });
@@ -149,13 +200,14 @@ export default function WhiteboardRoom({
     socketRef.current = socket;
 
     socket.on("connect", () => {
-      socket.emit("join-room", { roomId });
+      socket.emit("join-room", { roomId, userId: clientId });
     });
 
     socket.on("room-state", (payload) => {
       setRoomError("");
       setStrokes(Array.isArray(payload.strokes) ? payload.strokes : []);
       setTexts(Array.isArray(payload.texts) ? payload.texts : []);
+      setTextLocks(payload?.textLocks || {});
       setParticipantCount(Number(payload.participantCount) || 0);
       setRemoteDrafts({});
     });
@@ -164,17 +216,37 @@ export default function WhiteboardRoom({
       setParticipantCount(Number(payload.participantCount) || 0);
     });
 
-    socket.on("stroke-added", (payload) => {
-      setStrokes(payload.strokes);
-      setRemoteDrafts((currentDrafts) => {
-        const nextDrafts = { ...currentDrafts };
-        delete nextDrafts[payload.senderId];
-        return nextDrafts;
+    socket.on("history-state", (payload) => {
+      setCanUndo(Boolean(payload?.canUndo));
+      setCanRedo(Boolean(payload?.canRedo));
+    });
+
+    socket.on("text-live-updated", ({ textItem }) => {
+      if (!textItem?.id) {
+        return;
+      }
+
+      const hasVisibleText = typeof textItem.text === "string" && textItem.text.trim().length > 0;
+
+      if (textItem.deleted || !hasVisibleText) {
+        setTexts((currentTexts) => currentTexts.filter((item) => item.id !== textItem.id));
+        return;
+      }
+
+      setTexts((currentTexts) => {
+        const existingIndex = currentTexts.findIndex((item) => item.id === textItem.id);
+        if (existingIndex === -1) {
+          return [...currentTexts, textItem];
+        }
+
+        return currentTexts.map((item) => (item.id === textItem.id ? { ...item, ...textItem } : item));
       });
     });
 
-    socket.on("text-added", (payload) => {
-      setTexts(payload.texts);
+    socket.on("text-lock-denied", ({ textId }) => {
+      if (editingText?.id === textId) {
+        setEditingText(null);
+      }
     });
 
     socket.on("stroke-started", ({ senderId, stroke }) => {
@@ -201,16 +273,11 @@ export default function WhiteboardRoom({
       });
     });
 
-    socket.on("board-cleared", () => {
-      setStrokes([]);
-      setTexts([]);
-      setRemoteDrafts({});
-      setPendingText(null);
-    });
-
     socket.on("room-error", (payload) => {
       setRoomError(payload?.error || "Room not found.Nor muskoni first room create cheyyu ra barre.");
-      setPendingText(null);
+      setEditingText(null);
+      setSelectedTextId(null);
+      setTextLocks({});
       setIsDrawing(false);
       currentStrokeRef.current = null;
       socket.disconnect();
@@ -219,7 +286,7 @@ export default function WhiteboardRoom({
     return () => {
       socket.disconnect();
     };
-  }, [roomId]);
+  }, [clientId, roomId]);
 
   function handlePointerDown(event) {
     if (roomError) {
@@ -242,21 +309,60 @@ export default function WhiteboardRoom({
     }
 
     const point = pointFromEvent(canvas, event, cameraRef.current);
+    const hitText = findTextAtPoint(texts, point);
 
     if (activeTool === TOOL_TEXT) {
-      blurGuardUntilRef.current = Date.now() + 250;
-      setPendingText({
-        id: createItemId("text"),
-        x: point.x,
-        y: point.y,
-        text: "",
-        color: brushColor,
-        size: Math.max(Number(brushSize) * 5, 18)
-      });
+      const currentEditingText = editingTextRef.current;
+      if (currentEditingText && currentEditingText.id !== hitText?.id) {
+        submitText(currentEditingText);
+      }
+
+      if (hitText) {
+        if (textLocks[hitText.id] && textLocks[hitText.id].userId !== clientId) {
+          setSelectedTextId(hitText.id);
+          return;
+        }
+
+        setSelectedTextId(hitText.id);
+        setEditingText(hitText);
+        socketRef.current?.emit("TEXT_START", {
+          roomId,
+          textId: hitText.id,
+          textItem: hitText
+        });
+      } else {
+        const nextText = {
+          id: createItemId("text"),
+          x: point.x,
+          y: point.y,
+          text: "",
+          color: brushColor,
+          size: Math.max(Number(brushSize) * 5, 18),
+          fontWeight: 400
+        };
+        setSelectedTextId(nextText.id);
+        setEditingText(nextText);
+        socketRef.current?.emit("TEXT_START", {
+          roomId,
+          textId: nextText.id,
+          textItem: nextText
+        });
+      }
       return;
     }
 
-    setPendingText(null);
+    if (activeTool === TOOL_HAND && hitText) {
+      setSelectedTextId(hitText.id);
+      textDragRef.current = {
+        id: hitText.id,
+        offsetX: point.x - hitText.x,
+        offsetY: point.y - hitText.y
+      };
+      return;
+    }
+
+    setEditingText(null);
+    setSelectedTextId(hitText?.id || null);
     setIsDrawing(true);
     currentStrokeRef.current = {
       id: createItemId("stroke"),
@@ -284,6 +390,21 @@ export default function WhiteboardRoom({
 
     const point = pointFromEvent(canvas, event, cameraRef.current);
     setCursorPos(point);
+
+    if (textDragRef.current && !editingText) {
+      setTexts((currentTexts) =>
+        currentTexts.map((textItem) =>
+          textItem.id === textDragRef.current.id
+            ? {
+                ...textItem,
+                x: point.x - textDragRef.current.offsetX,
+                y: point.y - textDragRef.current.offsetY
+              }
+            : textItem
+        )
+      );
+      return;
+    }
 
     if (isPanning && panStateRef.current) {
       const deltaX = (event.clientX - panStateRef.current.pointerX) / cameraRef.current.zoom;
@@ -321,6 +442,18 @@ export default function WhiteboardRoom({
     if (isPanning) {
       panStateRef.current = null;
       setIsPanning(false);
+      return;
+    }
+
+    if (textDragRef.current) {
+      const movedText = texts.find((textItem) => textItem.id === textDragRef.current.id);
+      textDragRef.current = null;
+      if (movedText) {
+        socketRef.current?.emit("add-text", {
+          roomId,
+          textItem: movedText
+        });
+      }
       return;
     }
 
@@ -380,50 +513,217 @@ export default function WhiteboardRoom({
     socketRef.current?.emit("clear-board", { roomId });
   }
 
-  function submitText() {
+  function handleUndo() {
     if (roomError) {
       return;
     }
 
-    if (!pendingText) {
+    socketRef.current?.emit("undo", { roomId });
+  }
+
+  function handleRedo() {
+    if (roomError) {
       return;
     }
 
-    if (Date.now() < blurGuardUntilRef.current) {
-      window.setTimeout(() => {
-        textInputRef.current?.focus();
-      }, 0);
+    socketRef.current?.emit("redo", { roomId });
+  }
+
+  function submitText(targetText = editingTextRef.current) {
+    if (roomError) {
       return;
     }
 
-    const text = pendingText.text.trim();
+    if (!targetText) {
+      return;
+    }
+
+    releasePendingTextUpdate();
+    const text = (textInputRef.current?.innerText || targetText.text || "").trim();
     if (!text) {
-      setPendingText(null);
+      const existingText = texts.find((textItem) => textItem.id === targetText.id);
+      socketRef.current?.emit("TEXT_COMMIT", {
+        roomId,
+        textItem: {
+          ...(existingText || targetText),
+          text: "",
+          deleted: true
+        }
+      });
+
+      if (existingText) {
+        setTexts((currentTexts) => currentTexts.filter((textItem) => textItem.id !== targetText.id));
+      }
+
+      if (editingTextRef.current?.id === targetText.id) {
+        setEditingText(null);
+        setSelectedTextId(null);
+      }
       return;
     }
 
     const nextText = {
-      ...pendingText,
+      ...targetText,
       text
     };
 
-    socketRef.current?.emit("add-text", {
+    socketRef.current?.emit("TEXT_COMMIT", {
       roomId,
       textItem: nextText
     });
-    setPendingText(null);
+    setTexts((currentTexts) => {
+      const existingTextIndex = currentTexts.findIndex((textItem) => textItem.id === nextText.id);
+      if (existingTextIndex === -1) {
+        return [...currentTexts, nextText];
+      }
+
+      return currentTexts.map((textItem) => (textItem.id === nextText.id ? nextText : textItem));
+    });
+    if (editingTextRef.current?.id === nextText.id) {
+      setEditingText(null);
+      setSelectedTextId(nextText.id);
+    }
   }
 
   function handleTextKeyDown(event) {
-    if (event.key === "Enter" && !event.shiftKey) {
+    if (event.key === "Escape") {
       event.preventDefault();
       submitText();
     }
-
-    if (event.key === "Escape") {
-      setPendingText(null);
-    }
   }
+
+  function handleTextInput(event) {
+    const nextText = event.currentTarget.innerText.replace(/\r/g, "");
+    setEditingText((currentText) => {
+      if (!currentText) {
+        return currentText;
+      }
+
+      const updatedText = { ...currentText, text: nextText };
+      scheduleLiveTextUpdate(updatedText);
+      setTexts((currentTexts) => {
+        const existingIndex = currentTexts.findIndex((item) => item.id === updatedText.id);
+        const hasVisibleText = updatedText.text.trim().length > 0;
+
+        if (!hasVisibleText) {
+          return currentTexts.filter((item) => item.id !== updatedText.id);
+        }
+
+        if (existingIndex === -1) {
+          return [...currentTexts, updatedText];
+        }
+
+        return currentTexts.map((item) => (item.id === updatedText.id ? updatedText : item));
+      });
+      return updatedText;
+    });
+  }
+
+  function handleToggleBold() {
+    setEditingText((currentText) => {
+      if (!currentText) {
+        return currentText;
+      }
+
+      return {
+        ...currentText,
+        fontWeight: String(currentText.fontWeight || 400) === "400" ? 700 : 400
+      };
+    });
+
+    setTexts((currentTexts) =>
+      currentTexts.map((textItem) =>
+        textItem.id === selectedTextId
+          ? {
+              ...textItem,
+              fontWeight: String(textItem.fontWeight || 400) === "400" ? 700 : 400
+            }
+          : textItem
+      )
+    );
+  }
+
+  function handleFontSizeChange(delta) {
+    function clampSize(size) {
+      return Math.max(14, Math.min(72, (size || 28) + delta));
+    }
+
+    setEditingText((currentText) =>
+      currentText
+        ? {
+            ...currentText,
+            size: clampSize(currentText.size)
+          }
+        : currentText
+    );
+
+    setTexts((currentTexts) =>
+      currentTexts.map((textItem) =>
+        textItem.id === selectedTextId
+          ? {
+              ...textItem,
+              size: clampSize(textItem.size)
+            }
+          : textItem
+      )
+    );
+  }
+
+  useEffect(() => {
+    if (editingText && textLocks[editingText.id] && textLocks[editingText.id].userId !== clientId) {
+      setEditingText(null);
+    }
+  }, [clientId, editingText, textLocks]);
+
+  useEffect(() => {
+    if (!editingText) {
+      return undefined;
+    }
+
+    return () => {
+      releasePendingTextUpdate();
+    };
+  }, [editingText]);
+
+  useEffect(() => {
+    if (editingText && activeTool !== TOOL_TEXT) {
+      submitText();
+    }
+  }, [activeTool]);
+
+  useEffect(() => {
+    function handleHistoryShortcuts(event) {
+      const target = event.target;
+      if (
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLInputElement ||
+        target?.isContentEditable
+      ) {
+        return;
+      }
+
+      const hasHistoryModifier = event.metaKey || event.ctrlKey;
+      const lowerKey = event.key.toLowerCase();
+      const isUndoShortcut = hasHistoryModifier && lowerKey === "z" && !event.shiftKey;
+      const isRedoShortcut =
+        hasHistoryModifier && (lowerKey === "y" || (lowerKey === "z" && event.shiftKey));
+
+      if (isUndoShortcut) {
+        event.preventDefault();
+        handleUndo();
+      }
+
+      if (isRedoShortcut) {
+        event.preventDefault();
+        handleRedo();
+      }
+    }
+
+    window.addEventListener("keydown", handleHistoryShortcuts);
+    return () => {
+      window.removeEventListener("keydown", handleHistoryShortcuts);
+    };
+  }, [roomError]);
 
   return (
     <BoardShell>
@@ -463,17 +763,16 @@ export default function WhiteboardRoom({
 
           <TextEditorOverlay
             camera={camera}
-            pendingText={pendingText}
+            editingText={editingText}
+            isLockedByCurrentUser={isLockedByCurrentUser}
+            selectedText={selectedText}
             textInputRef={textInputRef}
             viewport={viewport}
             onBlur={submitText}
-            onChange={(event) =>
-              setPendingText((currentValue) => ({
-                ...currentValue,
-                text: event.target.value
-              }))
-            }
+            onInput={handleTextInput}
             onKeyDown={handleTextKeyDown}
+            onToggleBold={handleToggleBold}
+            onFontSizeChange={handleFontSizeChange}
           />
         </CanvasStack>
       </CanvasStage>
@@ -493,10 +792,15 @@ export default function WhiteboardRoom({
           activeTool={activeTool}
           brushColor={brushColor}
           brushSize={brushSize}
+          canRedo={canRedo}
+          canUndo={canUndo}
+          isDrawing={isDrawing}
           onBrushColorChange={(event) => setBrushColor(event.target.value)}
           onBrushSizeChange={(event) => setBrushSize(event.target.value)}
           onClearBoard={handleClearBoard}
+          onRedo={handleRedo}
           onToolChange={setActiveTool}
+          onUndo={handleUndo}
         />
       </LeftDock>
     </BoardShell>
