@@ -19,14 +19,6 @@ export function drawStroke(ctx, stroke) {
   ctx.lineWidth = stroke.size;
   ctx.lineJoin = "round";
   ctx.lineCap = "round";
-  ctx.beginPath();
-  ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
-
-  for (let index = 1; index < stroke.points.length; index += 1) {
-    const point = stroke.points[index];
-    ctx.lineTo(point.x, point.y);
-  }
-
   if (stroke.points.length === 1) {
     const point = stroke.points[0];
     ctx.beginPath();
@@ -37,6 +29,29 @@ export function drawStroke(ctx, stroke) {
     return;
   }
 
+  if (stroke.points.length === 2) {
+    ctx.beginPath();
+    ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
+    ctx.lineTo(stroke.points[1].x, stroke.points[1].y);
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
+
+  ctx.beginPath();
+  ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
+
+  for (let index = 1; index < stroke.points.length - 1; index += 1) {
+    const currentPoint = stroke.points[index];
+    const nextPoint = stroke.points[index + 1];
+    const midPointX = (currentPoint.x + nextPoint.x) / 2;
+    const midPointY = (currentPoint.y + nextPoint.y) / 2;
+    ctx.quadraticCurveTo(currentPoint.x, currentPoint.y, midPointX, midPointY);
+  }
+
+  const secondLastPoint = stroke.points[stroke.points.length - 2];
+  const lastPoint = stroke.points[stroke.points.length - 1];
+  ctx.quadraticCurveTo(secondLastPoint.x, secondLastPoint.y, lastPoint.x, lastPoint.y);
   ctx.stroke();
   ctx.restore();
 }
