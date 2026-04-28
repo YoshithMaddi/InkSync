@@ -1,5 +1,15 @@
 import { TOOL_ERASER } from "./constants";
 
+let measurementCanvas;
+
+function getMeasurementContext() {
+  if (!measurementCanvas && typeof document !== "undefined") {
+    measurementCanvas = document.createElement("canvas");
+  }
+
+  return measurementCanvas?.getContext("2d") || null;
+}
+
 export function createItemId(prefix) {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return `${prefix}-${crypto.randomUUID()}`;
@@ -63,7 +73,7 @@ export function drawTextElement(ctx, textItem) {
 
   ctx.save();
   ctx.fillStyle = textItem.color;
-  ctx.font = `${textItem.size || 28}px sans-serif`;
+  ctx.font = `${textItem.fontWeight || 400} ${textItem.size || 28}px sans-serif`;
   ctx.textBaseline = "top";
 
   const lines = textItem.text.split("\n");
@@ -208,6 +218,59 @@ export function overlayPosition(point, camera, viewport) {
     left: `${width / 2 + (point.x - camera.x) * camera.zoom}px`,
     top: `${height / 2 + (point.y - camera.y) * camera.zoom}px`
   };
+}
+
+export function measureTextItem(textItem) {
+  const fallbackSize = textItem?.size || 28;
+  const lines = (textItem?.text || "").split("\n");
+  const ctx = getMeasurementContext();
+  const lineHeight = fallbackSize + 6;
+
+  if (!ctx) {
+    const longestLineLength = lines.reduce((longest, line) => Math.max(longest, line.length), 1);
+    return {
+      width: Math.max(longestLineLength * fallbackSize * 0.58, 80),
+      height: Math.max(lines.length * lineHeight, fallbackSize + 12)
+    };
+  }
+
+  ctx.font = `${textItem?.fontWeight || 400} ${fallbackSize}px sans-serif`;
+  const width = lines.reduce((longest, line) => Math.max(longest, ctx.measureText(line || " ").width), 0);
+
+  return {
+    width: Math.max(width, 80),
+    height: Math.max(lines.length * lineHeight, fallbackSize + 12)
+  };
+}
+
+export function getTextBounds(textItem) {
+  const { width, height } = measureTextItem(textItem);
+
+  return {
+    left: textItem.x,
+    top: textItem.y,
+    right: textItem.x + width,
+    bottom: textItem.y + height,
+    width,
+    height
+  };
+}
+
+export function findTextAtPoint(texts, point) {
+  for (let index = texts.length - 1; index >= 0; index -= 1) {
+    const textItem = texts[index];
+    const bounds = getTextBounds(textItem);
+    if (
+      point.x >= bounds.left &&
+      point.x <= bounds.right &&
+      point.y >= bounds.top &&
+      point.y <= bounds.bottom
+    ) {
+      return textItem;
+    }
+  }
+
+  return null;
 }
 
 export function zoomCameraAtPoint(camera, nextZoom, screenPoint) {

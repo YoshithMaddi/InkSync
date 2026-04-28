@@ -128,21 +128,60 @@ export const RoomErrorCopy = styled.div`
   color: var(--text);
 `;
 
-export const TextEditor = styled.textarea`
+export const TextEditor = styled.div`
   position: absolute;
   z-index: 30;
-  min-width: 180px;
-  min-height: 52px;
+  min-width: 80px;
+  min-height: 28px;
   padding: 10px 12px;
   border: 1px solid rgba(15, 23, 42, 0.14);
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.96);
+  background: rgba(255, 255, 255, 0.72);
   color: var(--text);
-  resize: none;
   outline: none;
   transform: translate(-6px, -6px);
   box-shadow: 0 16px 34px rgba(15, 23, 42, 0.14);
   font: inherit;
+  white-space: pre-wrap;
+  word-break: break-word;
+  cursor: text;
+
+  &:empty::before {
+    content: attr(data-placeholder);
+    color: rgba(15, 23, 42, 0.38);
+  }
+`;
+
+export const TextToolbar = styled.div`
+  ${cardSurface};
+  position: absolute;
+  z-index: 31;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 16px;
+  background: rgba(255, 252, 246, 0.92);
+  transform: translate(-50%, calc(-100% - 14px));
+`;
+
+export const TextToolbarButton = styled.button`
+  ${controlSurface};
+  min-width: 38px;
+  height: 38px;
+  padding: 0 10px;
+  color: var(--text);
+  font: inherit;
+  font-weight: ${({ $active }) => ($active ? 700 : 500)};
+  background: ${({ $active }) => ($active ? "var(--accent-soft)" : "rgba(255, 255, 255, 0.82)")};
+  cursor: pointer;
+`;
+
+export const TextToolbarLabel = styled.span`
+  font-size: 0.8rem;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 `;
 
 export const RightDock = styled.div`

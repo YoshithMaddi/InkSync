@@ -6,6 +6,7 @@ import { API_URL } from "../lib/api";
 import { getOrCreateClientId } from "../lib/session";
 import {
   createItemId,
+  findTextAtPoint,
   pointFromEvent,
   renderScene,
   syncCanvasSize,
@@ -48,9 +49,9 @@ export default function WhiteboardRoom({
   const textInputRef = useRef(null);
   const socketRef = useRef(null);
   const currentStrokeRef = useRef(null);
+  const textDragRef = useRef(null);
   const cameraRef = useRef(DEFAULT_CAMERA);
   const panStateRef = useRef(null);
-  const blurGuardUntilRef = useRef(0);
   const sceneRef = useRef({
     strokes: initialStrokes,
     texts: initialTexts,
@@ -66,7 +67,8 @@ export default function WhiteboardRoom({
   const [isDrawing, setIsDrawing] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
   const [remoteDrafts, setRemoteDrafts] = useState({});
-  const [pendingText, setPendingText] = useState(null);
+  const [editingText, setEditingText] = useState(null);
+  const [selectedTextId, setSelectedTextId] = useState(null);
   const [camera, setCamera] = useState(DEFAULT_CAMERA);
   const [clientId, setClientId] = useState("");
   const [canUndo, setCanUndo] = useState(false);
@@ -137,8 +139,10 @@ export default function WhiteboardRoom({
     setClientId(getOrCreateClientId());
   }, []);
 
+  const selectedText = editingText || texts.find((textItem) => textItem.id === selectedTextId) || null;
+
   useEffect(() => {
-    if (pendingText && textInputRef.current) {
+    if (editingText && textInputRef.current) {
       const focusTimer = window.setTimeout(() => {
         textInputRef.current?.focus();
       }, 0);
@@ -147,7 +151,7 @@ export default function WhiteboardRoom({
         window.clearTimeout(focusTimer);
       };
     }
-  }, [pendingText]);
+  }, [editingText]);
 
   useEffect(() => {
     if (!clientId) {
@@ -207,7 +211,8 @@ export default function WhiteboardRoom({
 
     socket.on("room-error", (payload) => {
       setRoomError(payload?.error || "Room not found.Nor muskoni first room create cheyyu ra barre.");
-      setPendingText(null);
+      setEditingText(null);
+      setSelectedTextId(null);
       setIsDrawing(false);
       currentStrokeRef.current = null;
       socket.disconnect();
@@ -239,21 +244,40 @@ export default function WhiteboardRoom({
     }
 
     const point = pointFromEvent(canvas, event, cameraRef.current);
+    const hitText = findTextAtPoint(texts, point);
 
     if (activeTool === TOOL_TEXT) {
-      blurGuardUntilRef.current = Date.now() + 250;
-      setPendingText({
-        id: createItemId("text"),
-        x: point.x,
-        y: point.y,
-        text: "",
-        color: brushColor,
-        size: Math.max(Number(brushSize) * 5, 18)
-      });
+      if (hitText) {
+        setSelectedTextId(hitText.id);
+        setEditingText(hitText);
+      } else {
+        const nextText = {
+          id: createItemId("text"),
+          x: point.x,
+          y: point.y,
+          text: "",
+          color: brushColor,
+          size: Math.max(Number(brushSize) * 5, 18),
+          fontWeight: 400
+        };
+        setSelectedTextId(nextText.id);
+        setEditingText(nextText);
+      }
       return;
     }
 
-    setPendingText(null);
+    if (activeTool === TOOL_HAND && hitText) {
+      setSelectedTextId(hitText.id);
+      textDragRef.current = {
+        id: hitText.id,
+        offsetX: point.x - hitText.x,
+        offsetY: point.y - hitText.y
+      };
+      return;
+    }
+
+    setEditingText(null);
+    setSelectedTextId(hitText?.id || null);
     setIsDrawing(true);
     currentStrokeRef.current = {
       id: createItemId("stroke"),
@@ -281,6 +305,21 @@ export default function WhiteboardRoom({
 
     const point = pointFromEvent(canvas, event, cameraRef.current);
     setCursorPos(point);
+
+    if (textDragRef.current && !editingText) {
+      setTexts((currentTexts) =>
+        currentTexts.map((textItem) =>
+          textItem.id === textDragRef.current.id
+            ? {
+                ...textItem,
+                x: point.x - textDragRef.current.offsetX,
+                y: point.y - textDragRef.current.offsetY
+              }
+            : textItem
+        )
+      );
+      return;
+    }
 
     if (isPanning && panStateRef.current) {
       const deltaX = (event.clientX - panStateRef.current.pointerX) / cameraRef.current.zoom;
@@ -318,6 +357,18 @@ export default function WhiteboardRoom({
     if (isPanning) {
       panStateRef.current = null;
       setIsPanning(false);
+      return;
+    }
+
+    if (textDragRef.current) {
+      const movedText = texts.find((textItem) => textItem.id === textDragRef.current.id);
+      textDragRef.current = null;
+      if (movedText) {
+        socketRef.current?.emit("add-text", {
+          roomId,
+          textItem: movedText
+        });
+      }
       return;
     }
 
@@ -398,25 +449,31 @@ export default function WhiteboardRoom({
       return;
     }
 
-    if (!pendingText) {
+    if (!editingText) {
       return;
     }
 
-    if (Date.now() < blurGuardUntilRef.current) {
-      window.setTimeout(() => {
-        textInputRef.current?.focus();
-      }, 0);
-      return;
-    }
-
-    const text = pendingText.text.trim();
+    const text = (textInputRef.current?.innerText || editingText.text || "").trim();
     if (!text) {
-      setPendingText(null);
+      const existingText = texts.find((textItem) => textItem.id === editingText.id);
+      if (existingText) {
+        socketRef.current?.emit("add-text", {
+          roomId,
+          textItem: {
+            ...existingText,
+            deleted: true
+          }
+        });
+        setTexts((currentTexts) => currentTexts.filter((textItem) => textItem.id !== editingText.id));
+      }
+
+      setEditingText(null);
+      setSelectedTextId(null);
       return;
     }
 
     const nextText = {
-      ...pendingText,
+      ...editingText,
       text
     };
 
@@ -424,18 +481,78 @@ export default function WhiteboardRoom({
       roomId,
       textItem: nextText
     });
-    setPendingText(null);
+    setTexts((currentTexts) => {
+      const existingTextIndex = currentTexts.findIndex((textItem) => textItem.id === nextText.id);
+      if (existingTextIndex === -1) {
+        return [...currentTexts, nextText];
+      }
+
+      return currentTexts.map((textItem) => (textItem.id === nextText.id ? nextText : textItem));
+    });
+    setEditingText(null);
+    setSelectedTextId(nextText.id);
   }
 
   function handleTextKeyDown(event) {
-    if (event.key === "Enter" && !event.shiftKey) {
-      event.preventDefault();
-      submitText();
+    if (event.key === "Escape") {
+      setEditingText(null);
+      setSelectedTextId(null);
+    }
+  }
+
+  function handleTextInput(event) {
+    const nextText = event.currentTarget.innerText.replace(/\r/g, "");
+    setEditingText((currentText) => (currentText ? { ...currentText, text: nextText } : currentText));
+  }
+
+  function handleToggleBold() {
+    setEditingText((currentText) => {
+      if (!currentText) {
+        return currentText;
+      }
+
+      return {
+        ...currentText,
+        fontWeight: String(currentText.fontWeight || 400) === "400" ? 700 : 400
+      };
+    });
+
+    setTexts((currentTexts) =>
+      currentTexts.map((textItem) =>
+        textItem.id === selectedTextId
+          ? {
+              ...textItem,
+              fontWeight: String(textItem.fontWeight || 400) === "400" ? 700 : 400
+            }
+          : textItem
+      )
+    );
+  }
+
+  function handleFontSizeChange(delta) {
+    function clampSize(size) {
+      return Math.max(14, Math.min(72, (size || 28) + delta));
     }
 
-    if (event.key === "Escape") {
-      setPendingText(null);
-    }
+    setEditingText((currentText) =>
+      currentText
+        ? {
+            ...currentText,
+            size: clampSize(currentText.size)
+          }
+        : currentText
+    );
+
+    setTexts((currentTexts) =>
+      currentTexts.map((textItem) =>
+        textItem.id === selectedTextId
+          ? {
+              ...textItem,
+              size: clampSize(textItem.size)
+            }
+          : textItem
+      )
+    );
   }
 
   useEffect(() => {
@@ -510,17 +627,15 @@ export default function WhiteboardRoom({
 
           <TextEditorOverlay
             camera={camera}
-            pendingText={pendingText}
+            editingText={editingText}
+            selectedText={selectedText}
             textInputRef={textInputRef}
             viewport={viewport}
             onBlur={submitText}
-            onChange={(event) =>
-              setPendingText((currentValue) => ({
-                ...currentValue,
-                text: event.target.value
-              }))
-            }
+            onInput={handleTextInput}
             onKeyDown={handleTextKeyDown}
+            onToggleBold={handleToggleBold}
+            onFontSizeChange={handleFontSizeChange}
           />
         </CanvasStack>
       </CanvasStage>

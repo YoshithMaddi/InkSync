@@ -97,7 +97,7 @@ function getUserRedoStack(room, userId) {
 
 function rebuildRoomScene(room) {
   const nextStrokes = [];
-  const nextTexts = [];
+  const nextTextsById = new Map();
 
   for (const operation of room.operations) {
     if (operation.type === "clear") {
@@ -112,12 +112,17 @@ function rebuildRoomScene(room) {
     }
 
     if (operation.type === "text") {
-      nextTexts.push(operation.payload.textItem);
+      const textItem = operation.payload.textItem;
+      if (textItem.deleted) {
+        nextTextsById.delete(textItem.id);
+      } else {
+        nextTextsById.set(textItem.id, textItem);
+      }
     }
   }
 
   room.strokes = nextStrokes;
-  room.texts = nextTexts;
+  room.texts = Array.from(nextTextsById.values());
 }
 
 function broadcastRoomState(room) {
