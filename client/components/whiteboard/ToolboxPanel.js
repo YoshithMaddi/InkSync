@@ -6,6 +6,13 @@ import {
   ColorInput,
   DesktopToolboxCard,
   HistoryDock,
+  MobileColorButton,
+  MobileColorInput,
+  MobileContextLabel,
+  MobileContextPanel,
+  MobileControlRow,
+  MobileRange,
+  MobileRangeWrap,
   MobileToolEdge,
   MobileToolbarBackdrop,
   MobileToolRail,
@@ -83,6 +90,8 @@ function ToolboxPanel({
     onToolChange(nextTool);
     collapseMobileToolbar();
   }
+
+  const showMobileContextControls = activeTool === TOOL_PEN || activeTool === TOOL_ERASER;
 
   function handleEdgeTouchStart(event) {
     swipeStartXRef.current = event.touches[0]?.clientX ?? null;
@@ -238,6 +247,35 @@ function ToolboxPanel({
           <ToolIcon kind="redo" />
         </ToolButton>
       </HistoryDock>
+
+      <MobileContextPanel $visible={showMobileContextControls}>
+        <MobileContextLabel>{activeTool === TOOL_PEN ? "Pen" : "Eraser"}</MobileContextLabel>
+        <MobileControlRow>
+          {activeTool === TOOL_PEN ? (
+            <MobileColorButton htmlFor="mobileBrushColor" title="Pen color">
+              <MobileColorInput
+                id="mobileBrushColor"
+                type="color"
+                value={brushColor}
+                onChange={onBrushColorChange}
+                aria-label="Pen color"
+              />
+            </MobileColorButton>
+          ) : null}
+
+          <MobileRangeWrap htmlFor="mobileBrushSize" title="Thickness">
+            <MobileRange
+              id="mobileBrushSize"
+              type="range"
+              min="2"
+              max="24"
+              value={brushSize}
+              onChange={onBrushSizeChange}
+              aria-label="Thickness"
+            />
+          </MobileRangeWrap>
+        </MobileControlRow>
+      </MobileContextPanel>
     </>
   );
 }
