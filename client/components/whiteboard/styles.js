@@ -190,6 +190,130 @@ export const RoomChipCard = styled.aside`
   }
 `;
 
+export const RoomInfoWrap = styled.div`
+  position: relative;
+`;
+
+export const DesktopRoomCard = styled(RoomChipCard)`
+  @media (max-width: 720px) {
+    display: none;
+  }
+`;
+
+export const MobileRoomCard = styled(RoomChipCard)`
+  display: none;
+
+  @media (max-width: 720px) {
+    display: ${({ $visible }) => ($visible ? "grid" : "none")};
+    min-width: min(220px, calc(100vw - 92px));
+    gap: 10px;
+    padding: 14px;
+    border-radius: 24px;
+    background: rgba(255, 252, 246, 0.78);
+    box-shadow: 0 18px 40px rgba(15, 23, 42, 0.12);
+    animation: roomInfoFloatIn 250ms ease-in-out;
+  }
+
+  @keyframes roomInfoFloatIn {
+    from {
+      opacity: 0;
+      transform: translateY(-8px) scale(0.98);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+`;
+
+export const RoomInfoChip = styled.button`
+  ${cardSurface};
+  display: none;
+
+  @media (max-width: 720px) {
+    display: ${({ $visible }) => ($visible ? "inline-flex" : "none")};
+    align-items: center;
+    gap: 10px;
+    min-height: 44px;
+    padding: 10px 14px;
+    border-radius: 999px;
+    background: rgba(255, 252, 246, 0.74);
+    color: var(--text);
+    font: inherit;
+    cursor: pointer;
+    transition: transform 250ms ease-in-out, opacity 250ms ease-in-out;
+
+    &:active {
+      transform: scale(0.98);
+    }
+  }
+`;
+
+export const RoomInfoChipCount = styled.span`
+  font-size: 0.92rem;
+  font-weight: 600;
+`;
+
+export const RoomInfoChipArrow = styled.span`
+  font-size: 0.9rem;
+  color: var(--muted);
+`;
+
+export const BottomSheetBackdrop = styled.button`
+  position: fixed;
+  inset: 0;
+  z-index: 44;
+  border: none;
+  background: rgba(15, 23, 42, 0.18);
+  opacity: ${({ $open }) => ($open ? 1 : 0)};
+  pointer-events: ${({ $open }) => ($open ? "auto" : "none")};
+  transition: opacity 250ms ease-in-out;
+
+  @media (min-width: 721px) {
+    display: none;
+  }
+`;
+
+export const BottomSheet = styled.div`
+  ${cardSurface};
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  z-index: 45;
+  padding: 14px;
+  border-radius: 28px;
+  background: rgba(255, 252, 246, 0.88);
+  transform: translateY(${({ $open }) => ($open ? "0" : "115%")});
+  opacity: ${({ $open }) => ($open ? 1 : 0)};
+  pointer-events: ${({ $open }) => ($open ? "auto" : "none")};
+  transition: transform 250ms ease-in-out, opacity 250ms ease-in-out;
+
+  @media (min-width: 721px) {
+    display: none;
+  }
+`;
+
+export const BottomSheetHandle = styled.div`
+  width: 44px;
+  height: 5px;
+  margin: 0 auto 14px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.14);
+`;
+
+export const RoomInfoSection = styled.div`
+  display: grid;
+  gap: 8px;
+`;
+
+export const RoomInfoActions = styled.div`
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+`;
+
 export const RoomChipLabel = styled.div`
   font-size: 0.72rem;
   letter-spacing: 0.14em;
@@ -269,6 +393,8 @@ export const ToolButton = styled.button`
   padding: 0;
   font-weight: 600;
   cursor: pointer;
+  opacity: ${({ disabled }) => (disabled ? 0.45 : 1)};
+  pointer-events: ${({ disabled }) => (disabled ? "none" : "auto")};
 
   ${({ $active }) =>
     $active

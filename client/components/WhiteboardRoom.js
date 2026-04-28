@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
 import { API_URL } from "../lib/api";
+import { getOrCreateClientId } from "../lib/session";
 import {
   createItemId,
   pointFromEvent,
@@ -67,6 +68,9 @@ export default function WhiteboardRoom({
   const [remoteDrafts, setRemoteDrafts] = useState({});
   const [pendingText, setPendingText] = useState(null);
   const [camera, setCamera] = useState(DEFAULT_CAMERA);
+  const [clientId, setClientId] = useState("");
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
   const [cursorPos, setCursorPos] = useState(null);
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
 
@@ -130,6 +134,10 @@ export default function WhiteboardRoom({
   }, [strokes, texts, remoteDrafts, camera, activeTool, brushSize, cursorPos]);
 
   useEffect(() => {
+    setClientId(getOrCreateClientId());
+  }, []);
+
+  useEffect(() => {
     if (pendingText && textInputRef.current) {
       const focusTimer = window.setTimeout(() => {
         textInputRef.current?.focus();
@@ -142,6 +150,10 @@ export default function WhiteboardRoom({
   }, [pendingText]);
 
   useEffect(() => {
+    if (!clientId) {
+      return undefined;
+    }
+
     const socket = io(API_URL, {
       transports: ["websocket"]
     });
@@ -149,7 +161,7 @@ export default function WhiteboardRoom({
     socketRef.current = socket;
 
     socket.on("connect", () => {
-      socket.emit("join-room", { roomId });
+      socket.emit("join-room", { roomId, userId: clientId });
     });
 
     socket.on("room-state", (payload) => {
@@ -164,17 +176,9 @@ export default function WhiteboardRoom({
       setParticipantCount(Number(payload.participantCount) || 0);
     });
 
-    socket.on("stroke-added", (payload) => {
-      setStrokes(payload.strokes);
-      setRemoteDrafts((currentDrafts) => {
-        const nextDrafts = { ...currentDrafts };
-        delete nextDrafts[payload.senderId];
-        return nextDrafts;
-      });
-    });
-
-    socket.on("text-added", (payload) => {
-      setTexts(payload.texts);
+    socket.on("history-state", (payload) => {
+      setCanUndo(Boolean(payload?.canUndo));
+      setCanRedo(Boolean(payload?.canRedo));
     });
 
     socket.on("stroke-started", ({ senderId, stroke }) => {
@@ -201,13 +205,6 @@ export default function WhiteboardRoom({
       });
     });
 
-    socket.on("board-cleared", () => {
-      setStrokes([]);
-      setTexts([]);
-      setRemoteDrafts({});
-      setPendingText(null);
-    });
-
     socket.on("room-error", (payload) => {
       setRoomError(payload?.error || "Room not found.Nor muskoni first room create cheyyu ra barre.");
       setPendingText(null);
@@ -219,7 +216,7 @@ export default function WhiteboardRoom({
     return () => {
       socket.disconnect();
     };
-  }, [roomId]);
+  }, [clientId, roomId]);
 
   function handlePointerDown(event) {
     if (roomError) {
@@ -380,6 +377,22 @@ export default function WhiteboardRoom({
     socketRef.current?.emit("clear-board", { roomId });
   }
 
+  function handleUndo() {
+    if (roomError) {
+      return;
+    }
+
+    socketRef.current?.emit("undo", { roomId });
+  }
+
+  function handleRedo() {
+    if (roomError) {
+      return;
+    }
+
+    socketRef.current?.emit("redo", { roomId });
+  }
+
   function submitText() {
     if (roomError) {
       return;
@@ -424,6 +437,40 @@ export default function WhiteboardRoom({
       setPendingText(null);
     }
   }
+
+  useEffect(() => {
+    function handleHistoryShortcuts(event) {
+      const target = event.target;
+      if (
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLInputElement ||
+        target?.isContentEditable
+      ) {
+        return;
+      }
+
+      const hasHistoryModifier = event.metaKey || event.ctrlKey;
+      const lowerKey = event.key.toLowerCase();
+      const isUndoShortcut = hasHistoryModifier && lowerKey === "z" && !event.shiftKey;
+      const isRedoShortcut =
+        hasHistoryModifier && (lowerKey === "y" || (lowerKey === "z" && event.shiftKey));
+
+      if (isUndoShortcut) {
+        event.preventDefault();
+        handleUndo();
+      }
+
+      if (isRedoShortcut) {
+        event.preventDefault();
+        handleRedo();
+      }
+    }
+
+    window.addEventListener("keydown", handleHistoryShortcuts);
+    return () => {
+      window.removeEventListener("keydown", handleHistoryShortcuts);
+    };
+  }, [roomError]);
 
   return (
     <BoardShell>
@@ -493,10 +540,14 @@ export default function WhiteboardRoom({
           activeTool={activeTool}
           brushColor={brushColor}
           brushSize={brushSize}
+          canRedo={canRedo}
+          canUndo={canUndo}
           onBrushColorChange={(event) => setBrushColor(event.target.value)}
           onBrushSizeChange={(event) => setBrushSize(event.target.value)}
           onClearBoard={handleClearBoard}
+          onRedo={handleRedo}
           onToolChange={setActiveTool}
+          onUndo={handleUndo}
         />
       </LeftDock>
     </BoardShell>

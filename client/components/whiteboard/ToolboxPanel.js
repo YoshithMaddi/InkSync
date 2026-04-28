@@ -18,10 +18,14 @@ function ToolboxPanel({
   activeTool,
   brushColor,
   brushSize,
+  canRedo,
+  canUndo,
   onBrushColorChange,
   onBrushSizeChange,
   onClearBoard,
-  onToolChange
+  onRedo,
+  onToolChange,
+  onUndo
 }) {
   return (
     <ToolboxCard aria-label="Whiteboard tools">
@@ -30,6 +34,12 @@ function ToolboxPanel({
       </ToolboxHeader>
 
       <ToolButtonGrid>
+        <ToolButton type="button" onClick={onUndo} aria-label="Undo" title="Undo" disabled={!canUndo}>
+          <ToolIcon kind="undo" />
+        </ToolButton>
+        <ToolButton type="button" onClick={onRedo} aria-label="Redo" title="Redo" disabled={!canRedo}>
+          <ToolIcon kind="redo" />
+        </ToolButton>
         <ToolButton
           $active={activeTool === TOOL_PEN}
           type="button"

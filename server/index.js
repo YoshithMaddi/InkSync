@@ -1,6 +1,7 @@
 import express from "express";
 import http from "http";
 import cors from "cors";
+import { randomUUID } from "node:crypto";
 import { Server } from "socket.io";
 
 const app = express();
@@ -48,6 +49,9 @@ function getOrCreateRoom(roomId) {
   if (!rooms.has(normalizedRoomId)) {
     rooms.set(normalizedRoomId, {
       roomId: normalizedRoomId,
+      operations: [],
+      undoStacks: new Map(),
+      redoStacks: new Map(),
       strokes: [],
       texts: [],
       createdAt: Date.now()
@@ -67,9 +71,76 @@ function getParticipantCount(roomId) {
 
 function buildRoomPayload(room) {
   return {
-    ...room,
+    roomId: room.roomId,
+    strokes: room.strokes,
+    texts: room.texts,
+    createdAt: room.createdAt,
     participantCount: getParticipantCount(room.roomId)
   };
+}
+
+function getUserUndoStack(room, userId) {
+  if (!room.undoStacks.has(userId)) {
+    room.undoStacks.set(userId, []);
+  }
+
+  return room.undoStacks.get(userId);
+}
+
+function getUserRedoStack(room, userId) {
+  if (!room.redoStacks.has(userId)) {
+    room.redoStacks.set(userId, []);
+  }
+
+  return room.redoStacks.get(userId);
+}
+
+function rebuildRoomScene(room) {
+  const nextStrokes = [];
+  const nextTexts = [];
+
+  for (const operation of room.operations) {
+    if (operation.type === "clear") {
+      nextStrokes.length = 0;
+      nextTexts.length = 0;
+      continue;
+    }
+
+    if (operation.type === "draw") {
+      nextStrokes.push(operation.payload.stroke);
+      continue;
+    }
+
+    if (operation.type === "text") {
+      nextTexts.push(operation.payload.textItem);
+    }
+  }
+
+  room.strokes = nextStrokes;
+  room.texts = nextTexts;
+}
+
+function broadcastRoomState(room) {
+  io.to(room.roomId).emit("room-state", buildRoomPayload(room));
+}
+
+function emitHistoryState(socket, room, userId) {
+  socket.emit("history-state", {
+    canUndo: getUserUndoStack(room, userId).length > 0,
+    canRedo: getUserRedoStack(room, userId).length > 0
+  });
+}
+
+function appendOperation(room, operation) {
+  room.operations.push(operation);
+  getUserUndoStack(room, operation.userId).push(operation);
+  room.redoStacks.set(operation.userId, []);
+  rebuildRoomScene(room);
+}
+
+function removeOperation(room, operationId) {
+  room.operations = room.operations.filter((operation) => operation.id !== operationId);
+  rebuildRoomScene(room);
 }
 
 app.get("/health", (_request, response) => {
@@ -105,7 +176,7 @@ app.get("/rooms/:roomId", (request, response) => {
 });
 
 io.on("connection", (socket) => {
-  socket.on("join-room", ({ roomId }) => {
+  socket.on("join-room", ({ roomId, userId }) => {
     const room = getRoom(roomId);
     if (!room) {
       socket.emit("room-error", {
@@ -114,9 +185,18 @@ io.on("connection", (socket) => {
       return;
     }
 
+    if (!userId) {
+      socket.emit("room-error", {
+        error: "Unable to identify this collaborator."
+      });
+      return;
+    }
+
     socket.join(room.roomId);
     socket.data.roomId = room.roomId;
+    socket.data.userId = userId;
     socket.emit("room-state", buildRoomPayload(room));
+    emitHistoryState(socket, room, userId);
     io.to(room.roomId).emit("participant-count", {
       roomId: room.roomId,
       participantCount: getParticipantCount(room.roomId)
@@ -149,42 +229,110 @@ io.on("connection", (socket) => {
 
   socket.on("stroke-end", ({ roomId, stroke }) => {
     const room = getRoom(roomId);
-    if (!room) {
+    const userId = socket.data.userId;
+    if (!room || !userId) {
       return;
     }
 
-    room.strokes.push(stroke);
-    io.to(room.roomId).emit("stroke-added", {
-      roomId: room.roomId,
-      strokes: room.strokes,
-      senderId: socket.id
+    appendOperation(room, {
+      id: randomUUID(),
+      userId,
+      type: "draw",
+      payload: {
+        stroke: {
+          ...stroke,
+          userId
+        }
+      },
+      timestamp: Date.now()
     });
+    broadcastRoomState(room);
+    emitHistoryState(socket, room, userId);
   });
 
   socket.on("add-text", ({ roomId, textItem }) => {
     const room = getRoom(roomId);
-    if (!room) {
+    const userId = socket.data.userId;
+    if (!room || !userId) {
       return;
     }
 
-    room.texts.push(textItem);
-    io.to(room.roomId).emit("text-added", {
-      roomId: room.roomId,
-      texts: room.texts
+    appendOperation(room, {
+      id: randomUUID(),
+      userId,
+      type: "text",
+      payload: {
+        textItem: {
+          ...textItem,
+          userId
+        }
+      },
+      timestamp: Date.now()
     });
+    broadcastRoomState(room);
+    emitHistoryState(socket, room, userId);
   });
 
   socket.on("clear-board", ({ roomId }) => {
     const room = getRoom(roomId);
-    if (!room) {
+    const userId = socket.data.userId;
+    if (!room || !userId) {
       return;
     }
 
-    room.strokes = [];
-    room.texts = [];
-    io.to(room.roomId).emit("board-cleared", {
-      roomId: room.roomId
+    appendOperation(room, {
+      id: randomUUID(),
+      userId,
+      type: "clear",
+      payload: {},
+      timestamp: Date.now()
     });
+    broadcastRoomState(room);
+    emitHistoryState(socket, room, userId);
+  });
+
+  socket.on("undo", ({ roomId }) => {
+    const room = getRoom(roomId);
+    const userId = socket.data.userId;
+    if (!room || !userId) {
+      return;
+    }
+
+    const undoStack = getUserUndoStack(room, userId);
+    const operation = undoStack.pop();
+    if (!operation) {
+      emitHistoryState(socket, room, userId);
+      return;
+    }
+
+    getUserRedoStack(room, userId).push(operation);
+    removeOperation(room, operation.id);
+    broadcastRoomState(room);
+    emitHistoryState(socket, room, userId);
+  });
+
+  socket.on("redo", ({ roomId }) => {
+    const room = getRoom(roomId);
+    const userId = socket.data.userId;
+    if (!room || !userId) {
+      return;
+    }
+
+    const redoStack = getUserRedoStack(room, userId);
+    const operation = redoStack.pop();
+    if (!operation) {
+      emitHistoryState(socket, room, userId);
+      return;
+    }
+
+    room.operations.push({
+      ...operation,
+      timestamp: Date.now()
+    });
+    getUserUndoStack(room, userId).push(operation);
+    rebuildRoomScene(room);
+    broadcastRoomState(room);
+    emitHistoryState(socket, room, userId);
   });
 
   socket.on("disconnect", () => {
