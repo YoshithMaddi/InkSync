@@ -15,7 +15,7 @@ const io = new Server(server, {
 
 const PORT = Number(process.env.PORT || 4000);
 const ROOM_LENGTH = 6;
-const ROOM_SYMBOLS = "@#$&%!";
+const ROOM_SYMBOLS = "@#$&(){}[]!";
 const ROOM_CHARSET = `ABCDEFGHJKLMNPQRSTUVWXYZ23456789${ROOM_SYMBOLS}`;
 const TEXT_LOCK_TIMEOUT_MS = 15000;
 const rooms = new Map();
